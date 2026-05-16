@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import ArchitecturalDecision, CommandHistory, LessonLearned, Task, TaskLog
+from .models import ArchitecturalDecision, CommandHistory, ContextSnapshot, LessonLearned, Task, TaskLog
 
 
 def add_task(
@@ -25,7 +25,26 @@ def add_task(
 
 
 def list_tasks(session: Session, status: str, limit: int | None = None) -> list[Task]:
-    statement = select(Task).where(Task.status == status).order_by(Task.created_at.desc())
+    statement = select(Task).where(Task.status == status).order_by(Task.created_at.desc(), Task.id.desc())
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(session.scalars(statement))
+
+
+def add_snapshot(session: Session, snapshot_type: str, title: str | None, content: str, tags: dict | list | None) -> ContextSnapshot:
+    snapshot = ContextSnapshot(
+        snapshot_type=snapshot_type,
+        title=title,
+        content=content,
+        tags=tags,
+    )
+    session.add(snapshot)
+    session.flush()
+    return snapshot
+
+
+def list_snapshots(session: Session, limit: int | None = None) -> list[ContextSnapshot]:
+    statement = select(ContextSnapshot).order_by(ContextSnapshot.created_at.desc(), ContextSnapshot.id.desc())
     if limit is not None:
         statement = statement.limit(limit)
     return list(session.scalars(statement))
@@ -65,7 +84,7 @@ def list_task_logs(
     log_type: str | None = None,
     limit: int = 20,
 ) -> list[TaskLog]:
-    statement = select(TaskLog).order_by(TaskLog.created_at.desc()).limit(limit)
+    statement = select(TaskLog).order_by(TaskLog.created_at.desc(), TaskLog.id.desc()).limit(limit)
     if task_id is not None:
         statement = statement.where(TaskLog.task_id == task_id)
     if agent_name:
@@ -98,12 +117,25 @@ def list_decisions(
     status: str | None = None,
     limit: int | None = None,
 ) -> list[ArchitecturalDecision]:
-    statement = select(ArchitecturalDecision).order_by(ArchitecturalDecision.created_at.desc())
+    statement = select(ArchitecturalDecision).order_by(ArchitecturalDecision.created_at.desc(), ArchitecturalDecision.id.desc())
     if status:
         statement = statement.where(ArchitecturalDecision.status == status)
     if limit is not None:
         statement = statement.limit(limit)
     return list(session.scalars(statement))
+
+
+def supersede_decision(session: Session, old_id: int, new_id: int) -> ArchitecturalDecision | None:
+    old_decision = session.get(ArchitecturalDecision, old_id)
+    new_decision = session.get(ArchitecturalDecision, new_id)
+    if old_decision is None or new_decision is None:
+        return None
+    old_decision.status = "superseded"
+    old_decision.consequences = (
+        f"{old_decision.consequences or ''}\nSuperseded by decision #{new_id}."
+    ).strip()
+    session.flush()
+    return old_decision
 
 
 def add_command_log(
@@ -133,7 +165,7 @@ def list_command_history(
     limit: int = 20,
     success_flag: bool | None = None,
 ) -> list[CommandHistory]:
-    statement = select(CommandHistory).order_by(CommandHistory.created_at.desc())
+    statement = select(CommandHistory).order_by(CommandHistory.created_at.desc(), CommandHistory.id.desc())
     if success_flag is not None:
         statement = statement.where(CommandHistory.success_flag == success_flag)
     statement = statement.limit(limit)
@@ -163,7 +195,7 @@ def list_lessons(
     category: str | None = None,
     limit: int | None = None,
 ) -> list[LessonLearned]:
-    statement = select(LessonLearned).order_by(LessonLearned.created_at.desc())
+    statement = select(LessonLearned).order_by(LessonLearned.created_at.desc(), LessonLearned.id.desc())
     if category:
         statement = statement.where(LessonLearned.category == category)
     if limit is not None:

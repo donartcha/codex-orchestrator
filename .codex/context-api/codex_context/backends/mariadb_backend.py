@@ -12,13 +12,16 @@ from ..repositories import (
     add_command_log,
     add_decision,
     add_lesson,
+    add_snapshot,
     add_task,
     create_task_log,
     list_command_history,
     list_decisions,
     list_lessons,
+    list_snapshots,
     list_task_logs,
     list_tasks,
+    supersede_decision,
     update_task_status,
 )
 from .base import BackendStatus
@@ -55,6 +58,14 @@ class MariaDBBackend:
         with self.session() as session:
             return update_task_status(session, task_id, status)
 
+    def remember_snapshot(self, snapshot_type, title=None, content="", tags=None):
+        with self.session() as session:
+            return add_snapshot(session, snapshot_type, title, content, tags)
+
+    def snapshots(self, limit=None):
+        with self.session() as session:
+            return list_snapshots(session, limit)
+
     def remember_task_log(self, task_id, content, agent_name=None, log_type="summary"):
         with self.session() as session:
             return create_task_log(session, task_id, content, agent_name, log_type)
@@ -70,6 +81,10 @@ class MariaDBBackend:
     def decisions(self, status=None, limit=None):
         with self.session() as session:
             return list_decisions(session, status, limit)
+
+    def supersede_decision(self, old_id, new_id):
+        with self.session() as session:
+            return supersede_decision(session, old_id, new_id)
 
     def remember_command(self, agent_name, shell_type, command_text, success_flag, error_message=None, correction_applied=None):
         with self.session() as session:

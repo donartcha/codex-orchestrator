@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
 
-from ..models import ArchitecturalDecision, CommandHistory, LessonLearned, Task, TaskLog
+from ..models import ArchitecturalDecision, CommandHistory, ContextSnapshot, LessonLearned, Task, TaskLog
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,16 @@ class ContextBackend(Protocol):
 
     def set_task_status(self, task_id: int, status: str) -> Task | None: ...
 
+    def remember_snapshot(
+        self,
+        snapshot_type: str,
+        title: str | None,
+        content: str,
+        tags: dict | list | None,
+    ) -> ContextSnapshot: ...
+
+    def snapshots(self, limit: int | None = None) -> list[ContextSnapshot]: ...
+
     def remember_task_log(self, task_id: int, content: str, agent_name: str | None, log_type: str) -> TaskLog: ...
 
     def task_logs(
@@ -55,6 +65,8 @@ class ContextBackend(Protocol):
     ) -> ArchitecturalDecision: ...
 
     def decisions(self, status: str | None = None, limit: int | None = None) -> list[ArchitecturalDecision]: ...
+
+    def supersede_decision(self, old_id: int, new_id: int) -> ArchitecturalDecision | None: ...
 
     def remember_command(
         self,

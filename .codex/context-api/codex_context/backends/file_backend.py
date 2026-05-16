@@ -9,7 +9,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from ..models import ArchitecturalDecision, CommandHistory, LessonLearned, Task, TaskLog
+from ..models import ArchitecturalDecision, CommandHistory, ContextSnapshot, LessonLearned, Task, TaskLog
 from .base import BackendStatus
 
 CONTEXT_API_ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +17,7 @@ WORKSPACE_ROOT = CONTEXT_API_ROOT.parents[1]
 DEFAULT_FILE_PATH = WORKSPACE_ROOT / ".codex" / "context" / "memory-fallback.json"
 
 COLLECTIONS = {
+    "snapshots": ContextSnapshot,
     "tasks": Task,
     "task_logs": TaskLog,
     "decisions": ArchitecturalDecision,
@@ -76,6 +77,20 @@ class FileBackend:
                 return self._object("tasks", row)
         return None
 
+    def remember_snapshot(self, snapshot_type, title=None, content="", tags=None):
+        return self._append(
+            "snapshots",
+            {
+                "snapshot_type": snapshot_type,
+                "title": title,
+                "content": content,
+                "tags": tags,
+            },
+        )
+
+    def snapshots(self, limit=None):
+        return self._limit(self._objects("snapshots"), limit)
+
     def remember_task_log(self, task_id, content, agent_name=None, log_type="summary"):
         return self._append(
             "task_logs",
@@ -114,6 +129,21 @@ class FileBackend:
         if status:
             rows = [row for row in rows if row.status == status]
         return self._limit(rows, limit)
+
+    def supersede_decision(self, old_id, new_id):
+        store = self._read()
+        new_exists = any(int(row["id"]) == int(new_id) for row in store["decisions"])
+        if not new_exists:
+            return None
+        for row in store["decisions"]:
+            if int(row["id"]) == int(old_id):
+                row["status"] = "superseded"
+                consequence = str(row.get("consequences") or "").strip()
+                row["consequences"] = f"{consequence}\nSuperseded by decision #{new_id}.".strip()
+                row["updated_at"] = self._now()
+                self._write(store)
+                return self._object("decisions", row)
+        return None
 
     def remember_command(self, agent_name, shell_type, command_text, success_flag, error_message=None, correction_applied=None):
         return self._append(
@@ -172,7 +202,7 @@ class FileBackend:
         next_id = max([int(row.get("id", 0)) for row in rows] or [0]) + 1
         now = self._now()
         row = {"id": next_id, "created_at": now, **values}
-        if collection in {"tasks", "decisions"}:
+        if collection in {"snapshots", "tasks", "decisions"}:
             row.setdefault("updated_at", now)
         rows.append(row)
         self._write(store)

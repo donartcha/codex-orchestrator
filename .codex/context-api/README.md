@@ -74,6 +74,18 @@ python codex_memory.py finish --task-id 1 --summary "Resumen de lo hecho" --stat
 python codex_memory.py status
 ```
 
+Lifecycle commands added by the harness evolution work:
+
+```powershell
+python codex_memory.py snapshot add --title "pre-change" --limit 100
+python codex_memory.py snapshot list --limit 10
+python codex_memory.py decision supersede <old_id> <new_id>
+python codex_memory.py memory compact
+python codex_memory.py contradictions list
+```
+
+`snapshot restore` is intentionally blocked until backup and dry-run restore semantics are approved.
+
 ## Resolucion de entorno Python
 
 El CLI puede resolver el interprete correcto antes de ejecutar herramientas de contexto.
@@ -296,6 +308,21 @@ with open_context() as context:
     pending = context.tasks(status="pending", limit=5)
 ```
 
+The public context facade is explicit. Use:
+
+```python
+from codex_context.context import open_context, validate_facade_usage
+
+report = validate_facade_usage()
+assert report.ok
+```
+
+Deprecated compatibility remains for direct `Engine`, `Session`, `CodexContext.engine` and `CodexContext.session()` access, but those paths emit `DeprecationWarning` and should not be used by agents, skills or CLIs.
+
+Backend implementations must satisfy the shared contract in `codex_context.backends.contract`. Local parity tests cover SQLite and file fallback without touching real memory.
+
+Memory writes through `CodexContext` are sanitized before backend persistence. Redaction is irreversible; reports contain metadata only and never preserve original secrets.
+
 Helpers adicionales para recovery/fallback:
 
 ```python
@@ -345,6 +372,31 @@ Estos scripts se mantienen por compatibilidad, pero no son la primera opcion:
 - `scripts/list_command_history.py`
 
 Usa `python codex_memory.py ...` como CLI oficial.
+
+Legacy scripts have compatibility tests. Some use older positional argument contracts; preserve those contracts until a dedicated CLI refactor migrates callers safely.
+
+## Tests
+
+Run the local executable suite:
+
+```powershell
+cd .codex/context-api
+.\.venv\Scripts\python.exe -m pytest tests -v
+```
+
+The suite uses temporary SQLite/file backends and disables MariaDB for write-oriented CLI tests. MariaDB checks are integration-only unless a safe service is explicitly provisioned.
+
+Markers include:
+
+- `fallback`
+- `parity`
+- `cli`
+- `powershell`
+- `sanitization`
+- `lifecycle`
+- `orchestration`
+- `hooks`
+- `integration`
 
 ## Tablas
 

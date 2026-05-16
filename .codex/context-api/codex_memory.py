@@ -97,11 +97,17 @@ task_app = typer.Typer(help="Manage tasks and task logs.")
 decision_app = typer.Typer(help="Manage architectural and technical decisions.")
 lesson_app = typer.Typer(help="Manage reusable lessons.")
 command_app = typer.Typer(help="Manage command history.")
+snapshot_app = typer.Typer(help="Manage memory snapshots.")
+memory_app = typer.Typer(help="Inspect memory lifecycle reports.")
+contradictions_app = typer.Typer(help="Inspect memory contradictions.")
 
 app.add_typer(task_app, name="task")
 app.add_typer(decision_app, name="decision")
 app.add_typer(lesson_app, name="lesson")
 app.add_typer(command_app, name="command")
+app.add_typer(snapshot_app, name="snapshot")
+app.add_typer(memory_app, name="memory")
+app.add_typer(contradictions_app, name="contradictions")
 
 def _emit(message: object = "") -> None:
     print(str(message), flush=False)
@@ -249,6 +255,16 @@ def _print_commands(commands, title: str) -> None:
             f"error={_clip(command.error_message, 80)} ({command.created_at})"
         )
     _emit(f"{len(commands)} command(s).")
+
+
+def _print_snapshots(snapshots, title: str) -> None:
+    _section(title)
+    for snapshot in snapshots:
+        _emit(
+            f"- #{snapshot.id} [{snapshot.snapshot_type or ''}] "
+            f"{_clip(snapshot.title, 80)} ({snapshot.created_at})"
+        )
+    _emit(f"{len(snapshots)} snapshot(s).")
 
 
 @app.command()
@@ -520,6 +536,23 @@ def decision_list(
     _run_memory_call(call)
 
 
+@decision_app.command("supersede")
+def decision_supersede(
+    old_id: int = typer.Argument(..., help="Decision id to mark superseded."),
+    new_id: int = typer.Argument(..., help="Replacement decision id."),
+) -> None:
+    """Mark an older decision as superseded by a newer decision."""
+    def call() -> None:
+        with open_context() as context:
+            decision = context.supersede_decision(old_id, new_id)
+        if decision is None:
+            _emit("Decision supersession failed; verify both ids exist.")
+            raise typer.Exit(1)
+        _emit(f"Decision superseded id={decision.id} status={decision.status}")
+
+    _run_memory_call(call)
+
+
 @lesson_app.command("add")
 def lesson_add(
     category: str = typer.Option(..., "--category", "-c", help="Lesson category."),
@@ -586,6 +619,79 @@ def command_list(
         with open_context() as context:
             commands = context.commands(limit=limit, success_flag=False if failed_only else None)
         _print_commands(commands, "Command history")
+
+    _run_memory_call(call)
+
+
+@snapshot_app.command("add")
+def snapshot_add(
+    title: str = typer.Option("", "--title", "-t", help="Snapshot title."),
+    snapshot_type: str = typer.Option("manual", "--type", help="Snapshot type."),
+    limit: int = typer.Option(100, "--limit", "-n", min=1, help="Maximum rows per memory collection."),
+) -> None:
+    """Create a sanitized memory snapshot."""
+    def call() -> None:
+        with open_context() as context:
+            snapshot = context.remember_snapshot(
+                snapshot_type=snapshot_type,
+                title=title or None,
+                limit=limit,
+                tags={"source": "codex_memory.py"},
+            )
+        _emit(f"Snapshot added id={snapshot.id} type={snapshot.snapshot_type}")
+
+    _run_memory_call(call)
+
+
+@snapshot_app.command("list")
+def snapshot_list(
+    limit: int = typer.Option(10, "--limit", "-n", min=1, help="Maximum rows."),
+) -> None:
+    """List memory snapshots."""
+    def call() -> None:
+        with open_context() as context:
+            snapshots = context.snapshots(limit=limit)
+        _print_snapshots(snapshots, "Snapshots")
+
+    _run_memory_call(call)
+
+
+@snapshot_app.command("restore")
+def snapshot_restore(
+    snapshot_id: int = typer.Argument(..., help="Snapshot id to restore."),
+) -> None:
+    """Restore is intentionally blocked until backup/restore semantics are approved."""
+    _emit(f"Snapshot restore is not enabled for id={snapshot_id}.")
+    _emit("Create an explicit backup/restore plan before enabling destructive lifecycle operations.")
+    raise typer.Exit(2)
+
+
+@memory_app.command("compact")
+def memory_compact() -> None:
+    """Report compaction opportunities without deleting or rewriting memory."""
+    def call() -> None:
+        with open_context() as context:
+            report = context.compact_memory()
+        _section("Memory compaction report")
+        _emit(f"Inactive decisions: {report.inactive_decisions}")
+        _emit(f"Duplicate active decision issues: {len(report.duplicate_decision_keys)}")
+        for issue in report.duplicate_decision_keys:
+            _emit(f"- {_clip(issue, 180)}")
+        _emit(report.suggested_action)
+
+    _run_memory_call(call)
+
+
+@contradictions_app.command("list")
+def contradictions_list() -> None:
+    """List detected memory contradictions."""
+    def call() -> None:
+        with open_context() as context:
+            contradictions = context.contradictions()
+        _section("Contradictions")
+        for contradiction in contradictions:
+            _emit(f"- {contradiction.kind}: ids={list(contradiction.ids)} {_clip(contradiction.message, 160)}")
+        _emit(f"{len(contradictions)} contradiction(s).")
 
     _run_memory_call(call)
 

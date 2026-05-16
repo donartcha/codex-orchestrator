@@ -22,6 +22,7 @@
 .codex/context/*.sqlite3
 .codex/context/memory-fallback.json
 .codex/context-api/.venv/
+.codex/context-api/precommit-cache/
 **/__pycache__/
 **/*.py[cod]
 **/.pytest_cache/
