@@ -1,0 +1,34 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--exclude-files", "^\\.codex[\\\\/]skills-lock\\.json$"]
+
+  - repo: local
+    hooks:
+      - id: local-absolute-paths
+        name: Reject local absolute paths
+        entry: python .codex/tools/precommit/check_local_paths.py
+        language: system
+        types: [text]
+      - id: powershell-portability
+        name: Reject accidental Bash commands in portable docs/scripts
+        entry: python .codex/tools/precommit/check_powershell_portability.py
+        language: system
+        types: [text]
+      - id: forbidden-files
+        name: Reject .env, .venv and SQLite files
+        entry: python .codex/tools/precommit/check_forbidden_files.py
+        language: system
+        pass_filenames: true
+        always_run: true

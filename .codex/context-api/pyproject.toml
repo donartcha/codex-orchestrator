@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
+markers = [
+    "fallback: fallback chain and backend degradation behavior",
+    "hooks: repository safety hook checks",
+    "cli: codex_memory.py command-line contract",
+    "integration: tests that require an external service such as MariaDB",
+    "lifecycle: memory snapshot, supersession, compaction and contradiction checks",
+    "orchestration: structured task graph, dependency and validation record checks",
+    "powershell: Windows PowerShell command compatibility",
+    "parity: backend contract and parity checks",
+    "sanitization: memory write redaction and path normalization checks",
+]

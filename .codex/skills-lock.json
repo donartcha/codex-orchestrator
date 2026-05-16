@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "brainstorming": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/brainstorming/SKILL.md",
+      "computedHash": "32abf25a9a8a8b2584e3a3e1f63fa8f70b9ad20f052c834894d489d436e47d1c"
+    },
+    "context-recovery": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/context-recovery/SKILL.md",
+      "computedHash": "c94798dde9adb7c12259cbb253baa69791779b53c1ff236b70477ae65bc41a3c"
+    },
+    "debugging": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/debugging/SKILL.md",
+      "computedHash": "18b50d3be9f0e1b916235fc697dbb3b36d8f6a1f483b61852f37edf2bc5a7f1e"
+    },
+    "implementation": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/implementation/SKILL.md",
+      "computedHash": "57821c40021e1cb58d7c197f0c8e440086481e9892b6cd40c93a3d4fa14d1803"
+    },
+    "orchestrator": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/orchestrator/SKILL.md",
+      "computedHash": "5b19bc55ef29f45ca81f0e150420f2669ed2c76f45731296732a6e4addbf325f"
+    },
+    "powershell-recovery": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/powershell-recovery/SKILL.md",
+      "computedHash": "0dab651e01c6e70db4f5ab035e3315a3fbc8e15f06799a4016b7ba1b1fc679c4"
+    },
+    "reviewing": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/reviewing/SKILL.md",
+      "computedHash": "8c6389494ab72ea0cf55ba949fe37bb2640c2537e4ab289db20d1f359e3b85ed"
+    },
+    "testing": {
+      "source": "local-workspace",
+      "sourceType": "local",
+      "skillPath": "skills/testing/SKILL.md",
+      "computedHash": "1c954817dfe103a5feb970c6db651d3f45553a0da4f3f5c67d530f6838ef2950"
+    }
+  }
+}

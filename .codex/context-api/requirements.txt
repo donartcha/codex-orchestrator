@@ -1,0 +1,7 @@
+python-dotenv
+SQLAlchemy
+PyMySQL
+typer
+rich
+pytest
+pre-commit
