@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
+from typing import Any, Protocol
+
+from sqlalchemy.orm import Session
+
+from ..models import ArchitecturalDecision, CommandHistory, LessonLearned, Task, TaskLog
+
+
+@dataclass(frozen=True)
+class BackendStatus:
+    name: str
+    active: bool
+    degraded: bool = False
+    warning: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+class ContextBackend(Protocol):
+    status: BackendStatus
+
+    def close(self) -> None: ...
+
+    @contextmanager
+    def session(self) -> Iterator[Session]: ...
+
+    def remember_task(self, title: str, description: str, assigned_agent: str | None, priority: str) -> Task: ...
+
+    def tasks(self, status: str = "pending", limit: int | None = None) -> list[Task]: ...
+
+    def set_task_status(self, task_id: int, status: str) -> Task | None: ...
+
+    def remember_task_log(self, task_id: int, content: str, agent_name: str | None, log_type: str) -> TaskLog: ...
+
+    def task_logs(
+        self,
+        task_id: int | None = None,
+        agent_name: str | None = None,
+        log_type: str | None = None,
+        limit: int = 20,
+    ) -> list[TaskLog]: ...
+
+    def remember_decision(
+        self,
+        decision_key: str,
+        title: str,
+        rationale: str,
+        consequences: str,
+    ) -> ArchitecturalDecision: ...
+
+    def decisions(self, status: str | None = None, limit: int | None = None) -> list[ArchitecturalDecision]: ...
+
+    def remember_command(
+        self,
+        agent_name: str,
+        shell_type: str,
+        command_text: str,
+        success_flag: bool,
+        error_message: str | None = None,
+        correction_applied: str | None = None,
+    ) -> CommandHistory: ...
+
+    def commands(self, limit: int = 20, success_flag: bool | None = None) -> list[CommandHistory]: ...
+
+    def remember_lesson(
+        self,
+        category: str,
+        problem_description: str,
+        solution_description: str,
+        prevention_strategy: str,
+    ) -> LessonLearned: ...
+
+    def lessons(self, category: str | None = None, limit: int | None = None) -> list[LessonLearned]: ...
