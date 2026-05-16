@@ -21,6 +21,9 @@
 .codex/context-api/*.sqlite3
 .codex/context/*.sqlite3
 .codex/context/memory-fallback.json
+.codex/context-api/orchestration/
+.codex/context/orchestration/
+.codex/context-api/pytest_output.txt
 .codex/context-api/.venv/
 .codex/context-api/precommit-cache/
 **/__pycache__/

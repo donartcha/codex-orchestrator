@@ -181,6 +181,115 @@ class CodexContext:
     ) -> list[TaskLog]:
         return self.backend.task_logs(task_id, agent_name, log_type, limit)
 
+    def remember_orchestration_execution(
+        self,
+        execution_id: str,
+        title: str,
+        description: str | None,
+        assigned_agent: str | None,
+        root_task_id: str,
+        status: str = "pending",
+        summary: str | None = None,
+    ) -> dict[str, object]:
+        payload = self._sanitize_write(
+            {
+                "execution_id": execution_id,
+                "title": title,
+                "description": description,
+                "assigned_agent": assigned_agent,
+                "root_task_id": root_task_id,
+                "status": status,
+                "summary": summary,
+            }
+        )
+        return self.backend.remember_orchestration_execution(
+            str(payload["execution_id"]),
+            str(payload["title"]),
+            payload["description"],
+            payload["assigned_agent"],
+            str(payload["root_task_id"]),
+            str(payload["status"]),
+            payload["summary"],
+        )
+
+    def orchestration_executions(self, limit: int | None = None) -> list[dict[str, object]]:
+        return self.backend.orchestration_executions(limit)
+
+    def orchestration_execution(self, execution_id: str) -> dict[str, object] | None:
+        return self.backend.orchestration_execution(execution_id)
+
+    def remember_orchestration_task(
+        self,
+        task_id: str,
+        execution_id: str,
+        parent_id: str | None = None,
+        dependencies: tuple[str, ...] = (),
+        files: tuple[str, ...] = (),
+        validation_command: str | None = None,
+        status: str = "pending",
+    ) -> dict[str, object]:
+        payload = self._sanitize_write(
+            {
+                "task_id": task_id,
+                "execution_id": execution_id,
+                "parent_id": parent_id,
+                "dependencies": list(dependencies),
+                "files": list(files),
+                "validation_command": validation_command,
+                "status": status,
+            }
+        )
+        return self.backend.remember_orchestration_task(
+            str(payload["task_id"]),
+            str(payload["execution_id"]),
+            payload["parent_id"],
+            list(payload["dependencies"]),
+            list(payload["files"]),
+            payload["validation_command"],
+            str(payload["status"]),
+        )
+
+    def orchestration_task(self, task_id: str) -> dict[str, object] | None:
+        return self.backend.orchestration_task(task_id)
+
+    def orchestration_tasks(self, execution_id: str | None = None) -> list[dict[str, object]]:
+        return self.backend.orchestration_tasks(execution_id)
+
+    def remember_orchestration_validation(
+        self,
+        task_id: str,
+        command: str,
+        success: bool,
+        output: str = "",
+    ) -> dict[str, object]:
+        payload = self._sanitize_write(
+            {
+                "task_id": task_id,
+                "command": command,
+                "output": output,
+            }
+        )
+        return self.backend.remember_orchestration_validation(
+            str(payload["task_id"]),
+            str(payload["command"]),
+            bool(success),
+            str(payload["output"]),
+        )
+
+    def orchestration_validation(self, task_id: str) -> dict[str, object] | None:
+        return self.backend.orchestration_validation(task_id)
+
+    def replace_orchestration_conflicts(
+        self,
+        execution_id: str | None,
+        conflicts: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        payload = self._sanitize_write({"execution_id": execution_id, "conflicts": conflicts})
+        return self.backend.replace_orchestration_conflicts(
+            payload["execution_id"],
+            list(payload["conflicts"]),
+        )
+
     def remember_decision(
         self,
         decision_key: str,

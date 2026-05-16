@@ -20,6 +20,10 @@ COLLECTIONS = {
     "snapshots": ContextSnapshot,
     "tasks": Task,
     "task_logs": TaskLog,
+    "orchestration_executions": dict,
+    "orchestration_tasks": dict,
+    "orchestration_validations": dict,
+    "orchestration_conflicts": dict,
     "decisions": ArchitecturalDecision,
     "commands": CommandHistory,
     "lessons": LessonLearned,
@@ -112,7 +116,108 @@ class FileBackend:
             rows = [row for row in rows if row.log_type == log_type]
         return self._limit(rows, limit)
 
+    def remember_orchestration_execution(self, execution_id, title, description, assigned_agent, root_task_id, status="pending", summary=None):
+        return self._upsert(
+            "orchestration_executions",
+            "execution_id",
+            execution_id,
+            {
+                "execution_id": execution_id,
+                "title": title,
+                "description": description,
+                "assigned_agent": assigned_agent,
+                "root_task_id": root_task_id,
+                "status": status,
+                "summary": summary,
+            },
+        )
+
+    def orchestration_executions(self, limit=None):
+        return self._limit(list(reversed(self._read()["orchestration_executions"])), limit)
+
+    def orchestration_execution(self, execution_id):
+        for row in self._read()["orchestration_executions"]:
+            if row.get("execution_id") == execution_id:
+                return row
+        return None
+
+    def remember_orchestration_task(self, task_id, execution_id, parent_id=None, dependencies=None, files=None, validation_command=None, status="pending"):
+        return self._upsert(
+            "orchestration_tasks",
+            "task_id",
+            task_id,
+            {
+                "task_id": task_id,
+                "execution_id": execution_id,
+                "parent_id": parent_id,
+                "dependencies": list(dependencies or []),
+                "files": list(files or []),
+                "validation_command": validation_command,
+                "status": status,
+            },
+        )
+
+    def orchestration_task(self, task_id):
+        for row in self._read()["orchestration_tasks"]:
+            if row.get("task_id") == task_id:
+                return row
+        return None
+
+    def orchestration_tasks(self, execution_id=None):
+        rows = list(self._read()["orchestration_tasks"])
+        if execution_id is not None:
+            rows = [row for row in rows if row.get("execution_id") == execution_id]
+        return rows
+
+    def remember_orchestration_validation(self, task_id, command, success, output=""):
+        return self._upsert(
+            "orchestration_validations",
+            "task_id",
+            task_id,
+            {
+                "task_id": task_id,
+                "command": command,
+                "success": bool(success),
+                "output": output,
+            },
+        )
+
+    def orchestration_validation(self, task_id):
+        for row in self._read()["orchestration_validations"]:
+            if row.get("task_id") == task_id:
+                return row
+        return None
+
+    def replace_orchestration_conflicts(self, execution_id, conflicts):
+        store = self._read()
+        rows = store["orchestration_conflicts"]
+        if execution_id is not None:
+            rows = [row for row in rows if row.get("execution_id") != execution_id]
+        next_id = max([int(row.get("id", 0)) for row in rows] or [0]) + 1
+        now = self._now()
+        created: list[dict[str, object]] = []
+        for conflict in conflicts:
+            row = {
+                "id": next_id,
+                "created_at": now,
+                "execution_id": execution_id,
+                "kind": conflict["kind"],
+                "task_ids": list(conflict.get("task_ids") or []),
+                "detail": conflict.get("detail") or "",
+            }
+            next_id += 1
+            rows.append(row)
+            created.append(row)
+        store["orchestration_conflicts"] = rows
+        self._write(store)
+        return created
+
     def remember_decision(self, decision_key, title, rationale, consequences):
+        # Enforce unique decision_key constraint to match SQL backends
+        store = self._read()
+        for row in store["decisions"]:
+            if row.get("decision_key") == decision_key and row.get("status") == "active":
+                raise ValueError(f"A decision with key '{decision_key}' already exists and is active.")
         return self._append(
             "decisions",
             {
@@ -208,12 +313,30 @@ class FileBackend:
         self._write(store)
         return self._object(collection, row)
 
+    def _upsert(self, collection: str, key: str, value: object, values: dict[str, object]):
+        store = self._read()
+        rows = store[collection]
+        now = self._now()
+        for row in rows:
+            if row.get(key) == value:
+                row.update(values)
+                row.setdefault("created_at", now)
+                row["updated_at"] = now
+                self._write(store)
+                return dict(row)
+        row = {"created_at": now, "updated_at": now, **values}
+        rows.append(row)
+        self._write(store)
+        return dict(row)
+
     def _objects(self, collection: str):
         rows = self._read()[collection]
         return [self._object(collection, row) for row in reversed(rows)]
 
     def _object(self, collection: str, row: dict[str, object]):
         model = COLLECTIONS[collection]
+        if model is dict:
+            return dict(row)
         return model(**row)
 
     def _limit(self, rows, limit):

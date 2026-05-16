@@ -56,6 +56,52 @@ class ContextBackend(Protocol):
         limit: int = 20,
     ) -> list[TaskLog]: ...
 
+    def remember_orchestration_execution(
+        self,
+        execution_id: str,
+        title: str,
+        description: str | None,
+        assigned_agent: str | None,
+        root_task_id: str,
+        status: str,
+        summary: str | None = None,
+    ) -> dict[str, object]: ...
+
+    def orchestration_executions(self, limit: int | None = None) -> list[dict[str, object]]: ...
+
+    def orchestration_execution(self, execution_id: str) -> dict[str, object] | None: ...
+
+    def remember_orchestration_task(
+        self,
+        task_id: str,
+        execution_id: str,
+        parent_id: str | None,
+        dependencies: list[str],
+        files: list[str],
+        validation_command: str | None,
+        status: str,
+    ) -> dict[str, object]: ...
+
+    def orchestration_task(self, task_id: str) -> dict[str, object] | None: ...
+
+    def orchestration_tasks(self, execution_id: str | None = None) -> list[dict[str, object]]: ...
+
+    def remember_orchestration_validation(
+        self,
+        task_id: str,
+        command: str,
+        success: bool,
+        output: str,
+    ) -> dict[str, object]: ...
+
+    def orchestration_validation(self, task_id: str) -> dict[str, object] | None: ...
+
+    def replace_orchestration_conflicts(
+        self,
+        execution_id: str | None,
+        conflicts: list[dict[str, object]],
+    ) -> list[dict[str, object]]: ...
+
     def remember_decision(
         self,
         decision_key: str,

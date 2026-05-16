@@ -15,14 +15,23 @@ from ..repositories import (
     add_snapshot,
     add_task,
     create_task_log,
+    get_orchestration_execution,
+    get_orchestration_task,
+    get_orchestration_validation,
     list_command_history,
     list_decisions,
     list_lessons,
+    list_orchestration_executions,
+    list_orchestration_tasks,
     list_snapshots,
     list_task_logs,
     list_tasks,
+    replace_orchestration_conflicts,
     supersede_decision,
     update_task_status,
+    upsert_orchestration_execution,
+    upsert_orchestration_task,
+    upsert_orchestration_validation,
 )
 from .base import BackendStatus
 
@@ -73,6 +82,51 @@ class MariaDBBackend:
     def task_logs(self, task_id=None, agent_name=None, log_type=None, limit=20):
         with self.session() as session:
             return list_task_logs(session, task_id, agent_name, log_type, limit)
+
+    def remember_orchestration_execution(self, execution_id, title, description, assigned_agent, root_task_id, status="pending", summary=None):
+        with self.session() as session:
+            return upsert_orchestration_execution(session, execution_id, title, description, assigned_agent, root_task_id, status, summary)
+
+    def orchestration_executions(self, limit=None):
+        with self.session() as session:
+            return list_orchestration_executions(session, limit)
+
+    def orchestration_execution(self, execution_id):
+        with self.session() as session:
+            return get_orchestration_execution(session, execution_id)
+
+    def remember_orchestration_task(self, task_id, execution_id, parent_id=None, dependencies=None, files=None, validation_command=None, status="pending"):
+        with self.session() as session:
+            return upsert_orchestration_task(
+                session,
+                task_id,
+                execution_id,
+                parent_id,
+                list(dependencies or []),
+                list(files or []),
+                validation_command,
+                status,
+            )
+
+    def orchestration_task(self, task_id):
+        with self.session() as session:
+            return get_orchestration_task(session, task_id)
+
+    def orchestration_tasks(self, execution_id=None):
+        with self.session() as session:
+            return list_orchestration_tasks(session, execution_id)
+
+    def remember_orchestration_validation(self, task_id, command, success, output=""):
+        with self.session() as session:
+            return upsert_orchestration_validation(session, task_id, command, bool(success), output)
+
+    def orchestration_validation(self, task_id):
+        with self.session() as session:
+            return get_orchestration_validation(session, task_id)
+
+    def replace_orchestration_conflicts(self, execution_id, conflicts):
+        with self.session() as session:
+            return replace_orchestration_conflicts(session, execution_id, conflicts)
 
     def remember_decision(self, decision_key, title, rationale, consequences):
         with self.session() as session:

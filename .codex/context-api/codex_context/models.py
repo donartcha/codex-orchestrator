@@ -82,6 +82,49 @@ class TaskLog(CreatedAtMixin, Base):
     content: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
 
 
+class OrchestrationExecution(TimestampMixin, Base):
+    __tablename__ = "orchestration_executions"
+
+    execution_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+    assigned_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    root_task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str | None] = mapped_column(String(50), server_default="pending", nullable=True)
+    summary: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+
+
+class OrchestrationTask(CreatedAtMixin, Base):
+    __tablename__ = "orchestration_tasks"
+
+    task_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    execution_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    parent_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    dependencies: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    files: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    validation_command: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+    status: Mapped[str | None] = mapped_column(String(50), server_default="pending", nullable=True)
+
+
+class OrchestrationValidation(CreatedAtMixin, Base):
+    __tablename__ = "orchestration_validations"
+
+    task_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    command: Mapped[str] = mapped_column(LONG_TEXT_TYPE, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    output: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+
+
+class OrchestrationConflict(CreatedAtMixin, Base):
+    __tablename__ = "orchestration_conflicts"
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    kind: Mapped[str] = mapped_column(String(100), nullable=False)
+    task_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    detail: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+
+
 class CommandHistory(CreatedAtMixin, Base):
     __tablename__ = "command_history"
 

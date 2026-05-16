@@ -1,67 +1,67 @@
 # Codex Context API
 
-Capa local para guardar memoria persistente de Codex mediante una fachada unica con fallback transparente.
+Local layer for storing persistent Codex memory through a single facade with transparent fallback.
 
-## Proposito
+## Purpose
 
-Esta carpeta mantiene contexto durable para que Codex pueda recuperar tareas, decisiones, logs de tarea, comandos y aprendizajes sin depender solo del historial de conversacion.
+This directory keeps durable context so Codex can recover tasks, decisions, task logs, commands, lessons and orchestration records without relying only on conversation history.
 
-La fuente oficial para agents, skills y CLIs es `open_context()` o `codex_memory.py`. MariaDB es el backend primario; SQLite y JSON/Markdown son fallbacks internos de emergencia.
+The official source for agents, skills and CLIs is `open_context()` or `codex_memory.py`. MariaDB is the primary backend; SQLite and JSON/Markdown are internal emergency fallbacks.
 
-## Arquitectura
+## Architecture
 
-- `codex_context/models.py`: modelos SQLAlchemy y tablas.
-- `codex_context/repositories.py`: operaciones internas de persistencia.
-- `codex_context/context.py`: fachada oficial para agents, skills y CLIs.
-- `codex_context/fallback.py`: seleccion interna de backend.
-- `codex_context/backends/`: backends MariaDB, SQLite y archivo.
-- `codex_memory.py`: CLI oficial unificado.
-- `scripts/*.py`: scripts legacy compatibles.
+- `codex_context/models.py`: SQLAlchemy models and tables.
+- `codex_context/repositories.py`: internal persistence operations.
+- `codex_context/context.py`: official facade for agents, skills and CLIs.
+- `codex_context/fallback.py`: internal backend selection.
+- `codex_context/backends/`: MariaDB, SQLite and file backends.
+- `codex_memory.py`: unified official CLI.
+- `scripts/*.py`: compatible legacy scripts.
 
-El codigo de agents, skills y CLIs debe usar:
+Agent, skill and CLI code must use:
 
 ```python
 from codex_context.context import open_context
 ```
 
-No abras sesiones SQLAlchemy ni conexiones MariaDB/SQLite directamente fuera de la capa interna. Agents y skills no eligen backend.
+Do not open SQLAlchemy sessions or MariaDB/SQLite connections directly outside the internal layer. Agents and skills do not choose the backend.
 
-## MariaDB y `.env`
+## MariaDB And `.env`
 
-MariaDB se intenta primero. Si no esta disponible, `open_context()` usa SQLite. Si SQLite tampoco esta disponible, usa fallback JSON/Markdown. El fallback muestra un warning, pero el codigo de agents y skills no captura ni implementa esa decision.
+MariaDB is tried first. If it is unavailable, `open_context()` uses SQLite. If SQLite is also unavailable, it uses the JSON/Markdown fallback. Fallback emits a warning, but agent and skill code does not catch or implement that decision.
 
-Activa el entorno virtual desde PowerShell:
+Activate the virtual environment from PowerShell:
 
 ```powershell
 cd .codex/context-api
 .\.venv\Scripts\Activate.ps1
 ```
 
-Instala dependencias si hace falta:
+Install dependencies if needed:
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-Configura `.env` desde el ejemplo:
+Configure `.env` from the example:
 
 ```powershell
 copy .env.example .env
 ```
 
-No imprimas ni guardes passwords reales en docs, logs, memoria o respuestas.
+Do not print or store real passwords in docs, logs, memory or responses.
 
-Inicializa tablas solo cuando sea necesario:
+Initialize tables only when needed:
 
 ```powershell
 python scripts/init_db.py
 ```
 
-`init_db.py` crea tablas si no existen. No ejecuta migraciones destructivas.
+`init_db.py` creates tables if they do not exist. It does not run destructive migrations.
 
-## CLI oficial
+## Official CLI
 
-Usa `codex_memory.py` como punto unico de entrada:
+Use `codex_memory.py` as the single entrypoint:
 
 ```powershell
 python codex_memory.py check
@@ -70,7 +70,7 @@ python codex_memory.py runtime-check
 python codex_memory.py env-status
 python codex_memory.py backend-status
 python codex_memory.py bootstrap --limit 5
-python codex_memory.py finish --task-id 1 --summary "Resumen de lo hecho" --status done
+python codex_memory.py finish --task-id 1 --summary "Summary of completed work" --status done
 python codex_memory.py status
 ```
 
@@ -86,11 +86,21 @@ python codex_memory.py contradictions list
 
 `snapshot restore` is intentionally blocked until backup and dry-run restore semantics are approved.
 
-## Resolucion de entorno Python
+Orchestration commands also use the same facade and backend chain:
 
-El CLI puede resolver el interprete correcto antes de ejecutar herramientas de contexto.
+```powershell
+python codex_memory.py orchestrate start --title "Feature work" --description "Coordinate implementation and validation."
+python codex_memory.py orchestrate phase --execution-id exec-0001 --title "Implementation" --agent implementation-agent
+python codex_memory.py orchestrate status --execution-id exec-0001
+```
 
-Prioridad:
+Structured orchestration was initially prototyped as JSON files under `.codex/context-api/orchestration`. That path is legacy runtime output, not a separate architecture. Current orchestration persistence goes through `open_context()` and then MariaDB, SQLite fallback or file emergency fallback. Legacy JSON orchestration directories are ignored by Git.
+
+## Python Environment Resolution
+
+The CLI can resolve the correct interpreter before running context tools.
+
+Priority:
 
 ```text
 .venv/Scripts/python.exe
@@ -104,30 +114,30 @@ pyenv
 system Python
 ```
 
-Comando:
+Command:
 
 ```powershell
 python codex_memory.py resolve-python
 ```
 
-El resolvedor detecta virtualenv activo, valida imports minimos (`typer`, `sqlalchemy`, `pymysql`), reporta imports rotos y muestra warnings. No instala dependencias, no modifica `PATH` global y no toca `.env`.
+The resolver detects the active virtualenv, validates minimum imports (`typer`, `sqlalchemy`, `pymysql`), reports broken imports and shows warnings. It does not install dependencies, modify the global `PATH` or touch `.env`.
 
-Si Python global no tiene dependencias, usa el interprete local:
+If global Python does not have the required dependencies, use the local interpreter:
 
 ```powershell
 .\.venv\Scripts\python.exe codex_memory.py bootstrap --limit 5
 ```
 
-## Runtime validation
+## Runtime Validation
 
-Validacion completa:
+Full validation:
 
 ```powershell
 python codex_memory.py runtime-check
 python codex_memory.py env-status
 ```
 
-Valida:
+It validates:
 
 - Python interpreter
 - virtualenv
@@ -139,16 +149,16 @@ Valida:
 - UTF-8 compatibility
 - shell compatibility
 
-Estados posibles:
+Possible statuses:
 
 - `OK`
 - `WARNING`
 - `ERROR`
 - `FALLBACK_USED`
 
-## Recovery vs fallback
+## Recovery Vs Fallback
 
-Recovery corrige el problema y reintenta la ruta original.
+Recovery corrects the problem and retries the original path.
 
 ```text
 bash command invalid in PowerShell
@@ -158,7 +168,7 @@ convert command
 retry safely
 ```
 
-Fallback usa una ruta alternativa.
+Fallback uses an alternate path.
 
 ```text
 global python fails
@@ -166,11 +176,11 @@ global python fails
 use local .venv python
 ```
 
-Recovery y fallback son complementarios.
+Recovery and fallback are complementary.
 
-## Backend fallback transparente
+## Transparent Backend Fallback
 
-MariaDB es el backend primario. Si MariaDB falla, el contexto selecciona SQLite. Si SQLite falla, selecciona JSON/Markdown file fallback. Esto ocurre dentro de `.codex/context-api`.
+MariaDB is the primary backend. If MariaDB fails, the context layer selects SQLite. If SQLite fails, it selects the JSON/Markdown file fallback. This happens inside `.codex/context-api`.
 
 ```text
 MariaDB unavailable
@@ -182,25 +192,25 @@ JSON/Markdown file fallback
 show warning
 ```
 
-Agents y skills deben seguir usando exactamente la misma interfaz:
+Agents and skills must keep using exactly the same interface:
 
 ```python
 from codex_context.context import open_context
 ```
 
-Tambien pueden inspeccionar estado sin controlar backend:
+They can also inspect status without controlling the backend:
 
 ```powershell
 python codex_memory.py backend-status
 ```
 
-Uso correcto:
+Correct usage:
 
 - Use `open_context()`.
 - Use `python codex_memory.py ...`.
 - Report backend status if relevant.
 
-Uso incorrecto:
+Incorrect usage:
 
 - Connect directly to MariaDB.
 - Connect directly to SQLite.
@@ -209,59 +219,59 @@ Uso incorrecto:
 
 ### Tasks
 
-Tasks representan trabajo pendiente, en curso o finalizado.
+Tasks represent pending, in-progress or completed work.
 
 ```powershell
-python codex_memory.py task add --title "Revisar API" --description "Validar CLI de memoria" --agent codex --priority high
+python codex_memory.py task add --title "Review API" --description "Validate memory CLI" --agent codex --priority high
 python codex_memory.py task list --status pending --limit 20
 python codex_memory.py task status --task-id 1 --status done
 ```
 
-### Task logs
+### Task Logs
 
-Task logs registran que ocurrio en una tarea concreta. No son lessons.
+Task logs record what happened in a specific task. They are not lessons.
 
 ```powershell
-python codex_memory.py task log --task-id 1 --content "Validacion completada" --agent codex --type validation
+python codex_memory.py task log --task-id 1 --content "Validation completed" --agent codex --type validation
 python codex_memory.py task logs --task-id 1 --limit 10
 ```
 
 ### Decisions
 
-Decisions guardan decisiones tecnicas o arquitectonicas.
+Decisions store technical or architectural decisions.
 
 ```powershell
-python codex_memory.py decision add --key "memory-cli" --title "CLI unico" --rationale "Centraliza entradas y salidas de contexto"
+python codex_memory.py decision add --key "memory-cli" --title "Single CLI" --rationale "Centralizes context input and output"
 python codex_memory.py decision list --limit 10
 ```
 
 ### Lessons
 
-Lessons guardan aprendizajes reutilizables para el futuro.
+Lessons store reusable learning for future work.
 
 ```powershell
-python codex_memory.py lesson add --category "powershell" --problem "Comando Bash usado en PowerShell" --solution "Usar cmdlets nativos" --prevention "Revisar shell antes de ejecutar"
+python codex_memory.py lesson add --category "powershell" --problem "Bash command used in PowerShell" --solution "Use native cmdlets" --prevention "Check shell before execution"
 python codex_memory.py lesson list --limit 10
 ```
 
 ### Commands
 
-Commands guardan historial de ejecucion, errores y correcciones.
+Commands store execution history, errors and corrections.
 
 ```powershell
 python codex_memory.py command add --agent powershell-agent --shell powershell --command "python codex_memory.py check" --success true
 python codex_memory.py command list --failed-only --limit 10
 ```
 
-## Diferencias conceptuales
+## Conceptual Differences
 
-- `tasks`: trabajo que debe hacerse o ya se hizo.
-- `task_logs`: que ocurrio en una tarea concreta.
-- `decisions`: decisiones tecnicas o arquitectonicas.
-- `lessons`: aprendizajes reutilizables para evitar errores futuros.
-- `commands`: historial de ejecucion de terminal, incluyendo errores y correcciones.
+- `tasks`: work that should be done or has already been done.
+- `task_logs`: what happened in a specific task.
+- `decisions`: technical or architectural decisions.
+- `lessons`: reusable learning that prevents future errors.
+- `commands`: terminal execution history, including errors and corrections.
 
-## Flujo recomendado antes de trabajar
+## Recommended Workflow Before Work
 
 ```powershell
 cd .codex/context-api
@@ -269,33 +279,33 @@ cd .codex/context-api
 python codex_memory.py bootstrap --limit 5
 ```
 
-## Flujo recomendado despues de trabajar
+## Recommended Workflow After Work
 
 ```powershell
-python codex_memory.py finish --task-id 1 --summary "Resumen de lo hecho" --status done
+python codex_memory.py finish --task-id 1 --summary "Summary of completed work" --status done
 ```
 
-Ver estado general:
+Show overall status:
 
 ```powershell
 python codex_memory.py status
 ```
 
-## Uso desde Python
+## Python Usage
 
 ```python
 from codex_context.context import open_context
 
 with open_context() as context:
     task = context.remember_task(
-        title="Revisar memoria local",
-        description="Guardar una tarea desde la API unificada.",
+        title="Review local memory",
+        description="Store a task through the unified API.",
         assigned_agent="codex",
         priority="normal",
     )
     context.remember_task_log(
         task_id=task.id,
-        content="Resumen de lo ocurrido en la tarea.",
+        content="Summary of what happened in the task.",
         agent_name="codex",
         log_type="summary",
     )
@@ -319,11 +329,11 @@ assert report.ok
 
 Deprecated compatibility remains for direct `Engine`, `Session`, `CodexContext.engine` and `CodexContext.session()` access, but those paths emit `DeprecationWarning` and should not be used by agents, skills or CLIs.
 
-Backend implementations must satisfy the shared contract in `codex_context.backends.contract`. Local parity tests cover SQLite and file fallback without touching real memory.
+Backend implementations must satisfy the shared contract in `codex_context.backends.contract`. Local parity tests cover SQLite and file fallback without touching real memory. The contract includes orchestration executions, tasks, validations and conflicts so orchestration does not choose a separate storage path.
 
 Memory writes through `CodexContext` are sanitized before backend persistence. Redaction is irreversible; reports contain metadata only and never preserve original secrets.
 
-Helpers adicionales para recovery/fallback:
+Additional recovery/fallback helpers:
 
 ```python
 from codex_context.context import open_context
@@ -345,18 +355,18 @@ with open_context() as context:
     )
 ```
 
-## Politica de seguridad
+## Security Policy
 
-- No guardar secretos.
-- No imprimir passwords.
-- No volcar `.env`.
-- No registrar tokens en `commands`, `task_logs`, `lessons` o `decisions`.
-- Recuperar solo contexto reciente y relevante.
-- Usar `open_context()` para la memoria persistente.
+- Do not store secrets.
+- Do not print passwords.
+- Do not dump `.env`.
+- Do not record tokens in `commands`, `task_logs`, `lessons` or `decisions`.
+- Recover only recent and relevant context.
+- Use `open_context()` for persistent memory.
 
-## Scripts legacy
+## Legacy Scripts
 
-Estos scripts se mantienen por compatibilidad, pero no son la primera opcion:
+These scripts are kept for compatibility, but they are not the first option:
 
 - `scripts/check_connection.py`
 - `scripts/context_bootstrap.py`
@@ -371,7 +381,7 @@ Estos scripts se mantienen por compatibilidad, pero no son la primera opcion:
 - `scripts/add_command_log.py`
 - `scripts/list_command_history.py`
 
-Usa `python codex_memory.py ...` como CLI oficial.
+Use `python codex_memory.py ...` as the official CLI.
 
 Legacy scripts have compatibility tests. Some use older positional argument contracts; preserve those contracts until a dedicated CLI refactor migrates callers safely.
 
@@ -398,14 +408,18 @@ Markers include:
 - `hooks`
 - `integration`
 
-## Tablas
+## Tables
 
-`init_db.py` crea estas tablas si no existen:
+`init_db.py` creates these tables if they do not exist:
 
 - `context_snapshots`
 - `architectural_decisions`
 - `tasks`
 - `task_logs`
+- `orchestration_executions`
+- `orchestration_tasks`
+- `orchestration_validations`
+- `orchestration_conflicts`
 - `command_history`
 - `lessons_learned`
 - `project_constraints`

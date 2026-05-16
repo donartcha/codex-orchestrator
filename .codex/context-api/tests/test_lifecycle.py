@@ -47,19 +47,14 @@ def test_supersede_decision_marks_old_decision_inactive(tmp_path) -> None:
 
 
 @pytest.mark.lifecycle
-def test_contradictions_detect_duplicate_active_decision_keys(tmp_path) -> None:
+def test_decision_key_uniqueness_is_enforced_in_file_backend(tmp_path) -> None:
     backend = FileBackend(path=tmp_path / "memory.json")
 
     with open_context(backend=backend) as context:
-        context.remember_decision("duplicate-key", "First", "Rationale", "")
-        context.remember_decision("duplicate-key", "Second", "Rationale", "")
-        contradictions = context.contradictions()
-        report = context.compact_memory()
-
-    assert len(contradictions) == 1
-    assert contradictions[0].kind == "duplicate_active_decision_key"
-    assert report.duplicate_decision_keys
-    assert "no destructive compaction was run" in report.suggested_action
+        context.remember_decision("unique-key", "First", "Rationale", "")
+        # Attempting to create a second decision with same key should raise ValueError
+        with pytest.raises(ValueError, match="already exists and is active"):
+            context.remember_decision("unique-key", "Second", "Rationale", "")
 
 
 @pytest.mark.lifecycle

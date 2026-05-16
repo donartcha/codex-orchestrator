@@ -86,6 +86,7 @@ import typer
 
 from codex_context.config import ConfigError
 from codex_context.context import open_context
+from codex_context.orchestration import OrchestrationStore
 
 sys.path.insert(0, str(SCRIPTS_ROOT))
 from resolve_python_env import resolve_python_environment
@@ -100,6 +101,7 @@ command_app = typer.Typer(help="Manage command history.")
 snapshot_app = typer.Typer(help="Manage memory snapshots.")
 memory_app = typer.Typer(help="Inspect memory lifecycle reports.")
 contradictions_app = typer.Typer(help="Inspect memory contradictions.")
+orchestration_app = typer.Typer(help="Manage structured orchestration tasks and execution.")
 
 app.add_typer(task_app, name="task")
 app.add_typer(decision_app, name="decision")
@@ -108,6 +110,7 @@ app.add_typer(command_app, name="command")
 app.add_typer(snapshot_app, name="snapshot")
 app.add_typer(memory_app, name="memory")
 app.add_typer(contradictions_app, name="contradictions")
+app.add_typer(orchestration_app, name="orchestrate")
 
 def _emit(message: object = "") -> None:
     print(str(message), flush=False)
@@ -692,6 +695,146 @@ def contradictions_list() -> None:
         for contradiction in contradictions:
             _emit(f"- {contradiction.kind}: ids={list(contradiction.ids)} {_clip(contradiction.message, 160)}")
         _emit(f"{len(contradictions)} contradiction(s).")
+
+    _run_memory_call(call)
+
+
+@orchestration_app.command("start")
+def orchestrate_start(
+    title: str = typer.Option(..., "--title", help="Orchestration title."),
+    description: str = typer.Option(..., "--description", help="Orchestration description."),
+    agent: str = typer.Option("orchestrator", "--agent", "-a", help="Assigned agent."),
+) -> None:
+    """Start a new orchestration execution."""
+    def call() -> None:
+        with open_context() as context:
+            store = OrchestrationStore(context)
+            execution = store.start_execution(title=title, description=description, assigned_agent=agent)
+        _emit(f"Orchestration started execution_id={execution.execution_id} root_task_id={execution.root_task_id}")
+        _emit(f"Title: {title}")
+        _emit(f"Agent: {agent}")
+
+    _run_memory_call(call)
+
+
+@orchestration_app.command("phase")
+def orchestrate_phase(
+    execution_id: str = typer.Option(..., "--execution-id", help="Execution id."),
+    title: str = typer.Option(..., "--title", help="Phase/task title."),
+    agent: str = typer.Option("", "--agent", "-a", help="Assigned agent."),
+    depends_on: str = typer.Option("", "--depends-on", help="Comma-separated task ids to depend on."),
+    files: str = typer.Option("", "--files", help="Comma-separated files modified by this phase."),
+) -> None:
+    """Add a phase or subtask to an orchestration."""
+    def call() -> None:
+        with open_context() as context:
+            store = OrchestrationStore(context)
+            task_id = store.next_phase_id(execution_id)
+            dependencies = tuple(d.strip() for d in depends_on.split(",") if d.strip()) if depends_on else ()
+            file_list = tuple(f.strip() for f in files.split(",") if f.strip()) if files else ()
+            store.record_task(
+                task_id=task_id,
+                execution_id=execution_id,
+                dependencies=dependencies,
+                files=file_list,
+                status="pending",
+            )
+        _emit(f"Phase added task_id={task_id} execution_id={execution_id}")
+        if dependencies:
+            _emit(f"Depends on: {', '.join(dependencies)}")
+        if file_list:
+            _emit(f"Files: {', '.join(file_list)}")
+
+    _run_memory_call(call)
+
+
+@orchestration_app.command("validation")
+def orchestrate_validation(
+    execution_id: str = typer.Option(..., "--execution-id", help="Execution id."),
+    task_id: str = typer.Option(..., "--task-id", help="Task id to validate."),
+    command: str = typer.Option(..., "--command", help="Validation command."),
+    status: str = typer.Option(..., "--status", help="Validation status: passed or failed."),
+    output: str = typer.Option("", "--output", help="Validation output."),
+) -> None:
+    """Record a validation result for a task."""
+    def call() -> None:
+        with open_context() as context:
+            store = OrchestrationStore(context)
+            success = status.lower().strip() in {"passed", "success", "ok", "true", "1", "yes"}
+            record = store.record_validation(task_id=task_id, command=command, success=success, output=output)
+        _emit(f"Validation recorded task_id={task_id} command={_clip(command, 60)} success={record.success}")
+
+    _run_memory_call(call)
+
+
+@orchestration_app.command("conflict")
+def orchestrate_conflict(
+    execution_id: str = typer.Option(..., "--execution-id", help="Execution id."),
+    description: str = typer.Option(..., "--description", help="Conflict description."),
+    affected_tasks: str = typer.Option("", "--affected-tasks", help="Comma-separated task ids."),
+) -> None:
+    """Record a conflict in orchestration."""
+    def call() -> None:
+        with open_context() as context:
+            store = OrchestrationStore(context)
+            task_ids = tuple(t.strip() for t in affected_tasks.split(",") if t.strip()) if affected_tasks else ()
+            conflicts = store.detect_conflicts(task_ids) if task_ids else []
+        _emit(f"Conflict recorded execution_id={execution_id}")
+        _emit(f"Description: {description}")
+        if task_ids:
+            _emit(f"Affected tasks: {', '.join(task_ids)}")
+        _emit(f"Detected {len(conflicts)} conflict(s).")
+
+    _run_memory_call(call)
+
+
+@orchestration_app.command("status")
+def orchestrate_status(
+    execution_id: str = typer.Option(..., "--execution-id", help="Execution id."),
+) -> None:
+    """Show the status of an orchestration execution."""
+    def call() -> None:
+        with open_context() as context:
+            store = OrchestrationStore(context)
+            graph = store.get_task_graph(execution_id)
+        _section(f"Orchestration status: {execution_id}")
+        _emit(f"Total tasks: {len(graph.tasks)}")
+        _section("Tasks")
+        for task in graph.tasks:
+            deps = f" <- {', '.join(task.dependencies)}" if task.dependencies else ""
+            _emit(f"- {task.task_id} [{task.status}]{deps}")
+        _section("Task summary")
+        completion = tuple(t for t in graph.tasks if t.status == "done")
+        blocked = tuple(t for t in graph.tasks if t.status == "blocked")
+        pending = tuple(t for t in graph.tasks if t.status == "pending")
+        _emit(f"Done: {len(completion)}/{len(graph.tasks)}")
+        _emit(f"Blocked: {len(blocked)}/{len(graph.tasks)}")
+        _emit(f"Pending: {len(pending)}/{len(graph.tasks)}")
+
+    _run_memory_call(call)
+
+
+@orchestration_app.command("finish")
+def orchestrate_finish(
+    execution_id: str = typer.Option(..., "--execution-id", help="Execution id."),
+    summary: str = typer.Option(..., "--summary", help="Completion summary."),
+    status: str = typer.Option("done", "--status", "-s", help="Final status: done or blocked."),
+) -> None:
+    """Finalize and consolidate an orchestration execution."""
+    def call() -> None:
+        with open_context() as context:
+            store = OrchestrationStore(context)
+            graph = store.get_task_graph(execution_id)
+            task_ids = tuple(task.task_id for task in graph.tasks)
+            result = store.consolidate_tasks(task_ids)
+            store.finish_execution(execution_id, summary=summary, status=status)
+        _section(f"Orchestration completion: {execution_id}")
+        _emit(f"Summary: {summary}")
+        _emit(f"Status: {status}")
+        _emit(f"Total tasks: {result.total}")
+        _emit(f"Completed: {result.completed}/{result.total}")
+        _emit(f"Pending: {result.pending}/{result.total}")
+        _emit(f"Blocked: {result.blocked}/{result.total}")
 
     _run_memory_call(call)
 
