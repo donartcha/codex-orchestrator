@@ -37,6 +37,7 @@
 
 # Keep nested project folders out unless explicitly opted in later.
 /ArchGraph/
+/OpenLAG/
 /client/
 /CliniCalc/
 /nodus/
