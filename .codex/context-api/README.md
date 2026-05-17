@@ -69,9 +69,39 @@ python codex_memory.py resolve-python
 python codex_memory.py runtime-check
 python codex_memory.py env-status
 python codex_memory.py backend-status
-python codex_memory.py bootstrap --limit 5
+python codex_memory.py bootstrap --mode new-task --title "Add CI workflow"
 python codex_memory.py finish --task-id 1 --summary "Summary of completed work" --status done
 python codex_memory.py status
+python codex_memory.py task list --status all
+python codex_memory.py task summary
+```
+
+Bootstrap is scoped by default. Use `--mode general` only when you explicitly want the old-style full overview:
+
+```powershell
+python codex_memory.py bootstrap --mode general --limit 5
+python codex_memory.py bootstrap --mode new-task --title "Add CI workflow"
+python codex_memory.py bootstrap --mode continue-task --task-id 6
+python codex_memory.py bootstrap --mode debugging --query "PowerShell typer"
+python codex_memory.py bootstrap --mode validation --category tests
+```
+
+Modes separate active warnings, relevant memory and historical diagnostics:
+
+- `new-task` is the default. It shows runtime warnings, backend status, pending tasks, active global or relevant decisions, and relevant lessons only when a title/query/category/tags filter is provided. It skips historical failed commands.
+- `continue-task` requires `--task-id` and shows task details, task logs, related decisions, validations, commands and lessons.
+- `debugging` requires `--query` or `--category` and shows matching failed commands, lessons, decisions, runtime and backend status.
+- `validation` shows recent validation records, failed validations and commands related to tests, hooks and builds.
+- `general` keeps the manual full overview available.
+
+Useful filters include `--category`, `--tags`, `--task-id`, `--status`, `--agent`, `--query`, `--active-only` and `--unresolved-only`. Failed commands are marked `diagnostic=resolved` when a correction is recorded and `diagnostic=unresolved` otherwise.
+
+Task listings are status-filtered by default. `task list` defaults to `--status pending`, prints the filtered status count and total task count, and says `Other task statuses exist.` when the selected status is empty but tasks exist elsewhere. Use `--status all` for the full task list or `task summary` for grouped counts:
+
+```powershell
+python codex_memory.py task list --status pending
+python codex_memory.py task list --status all
+python codex_memory.py task summary
 ```
 
 Lifecycle commands added by the harness evolution work:
@@ -276,7 +306,7 @@ python codex_memory.py command list --failed-only --limit 10
 ```powershell
 cd .codex/context-api
 .\.venv\Scripts\Activate.ps1
-python codex_memory.py bootstrap --limit 5
+python codex_memory.py bootstrap --mode new-task --title "Brief task title"
 ```
 
 ## Recommended Workflow After Work

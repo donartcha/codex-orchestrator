@@ -35,8 +35,10 @@ def add_task(
     return task
 
 
-def list_tasks(session: Session, status: str, limit: int | None = None) -> list[Task]:
-    statement = select(Task).where(Task.status == status).order_by(Task.created_at.desc(), Task.id.desc())
+def list_tasks(session: Session, status: str | None, limit: int | None = None) -> list[Task]:
+    statement = select(Task).order_by(Task.created_at.desc(), Task.id.desc())
+    if status and status != "all":
+        statement = statement.where(Task.status == status)
     if limit is not None:
         statement = statement.limit(limit)
     return list(session.scalars(statement))

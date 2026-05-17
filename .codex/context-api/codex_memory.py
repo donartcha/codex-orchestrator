@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 CONTEXT_API_ROOT = Path(__file__).resolve().parent
 SCRIPTS_ROOT = CONTEXT_API_ROOT / "scripts"
@@ -127,9 +128,139 @@ def _clip(value: object, limit: int = 100) -> str:
     return f"{text[: limit - 3]}..."
 
 
+def _tokens(value: str) -> list[str]:
+    return [item.strip().lower() for item in value.split(",") if item.strip()]
+
+
+def _search_terms(value: str) -> list[str]:
+    return [item.strip().lower() for item in value.replace(",", " ").split() if item.strip()]
+
+
+def _text_matches(row: object, query: str = "", tags: str = "") -> bool:
+    needles = _tokens(tags)
+    if query.strip():
+        needles.append(query.strip().lower())
+    if not needles:
+        return True
+    haystack = _row_text(row).lower()
+    return all(needle in haystack for needle in needles)
+
+
+def _row_text(row: object) -> str:
+    if isinstance(row, dict):
+        return " ".join(str(value) for value in row.values() if value is not None)
+    values: list[str] = []
+    for name in (
+        "title",
+        "description",
+        "status",
+        "priority",
+        "assigned_agent",
+        "agent_name",
+        "log_type",
+        "content",
+        "decision_key",
+        "rationale",
+        "consequences",
+        "category",
+        "problem_description",
+        "solution_description",
+        "prevention_strategy",
+        "shell_type",
+        "command_text",
+        "error_message",
+        "correction_applied",
+    ):
+        values.append(str(getattr(row, name, "") or ""))
+    return " ".join(values)
+
+
+def _field(row: object, name: str, default: object = "") -> object:
+    if isinstance(row, dict):
+        return row.get(name, default)
+    return getattr(row, name, default)
+
+
+def _is_global_decision(decision: object) -> bool:
+    text = _row_text(decision).lower()
+    return any(token in text for token in ("global", "constraint", "policy", "workflow", "runtime", "backend"))
+
+
+def _is_resolved_command(command: object) -> bool:
+    return bool(getattr(command, "success_flag", None)) or bool(getattr(command, "correction_applied", None))
+
+
+def _filter_rows(
+    rows: list[Any],
+    *,
+    query: str = "",
+    tags: str = "",
+    status: str = "",
+    category: str = "",
+    agent: str = "",
+    active_only: bool = False,
+    unresolved_only: bool = False,
+    task_id: str = "",
+    validation_category: str = "",
+) -> list[Any]:
+    filtered = list(rows)
+    if status:
+        filtered = [row for row in filtered if str(_field(row, "status") or "") == status]
+    if category:
+        terms = _search_terms(category)
+        filtered = [row for row in filtered if any(term in _row_text(row).lower() for term in terms)]
+    if agent:
+        filtered = [row for row in filtered if agent.lower() in _row_text(row).lower()]
+    if task_id:
+        filtered = [row for row in filtered if str(task_id) in _row_text(row)]
+    if validation_category:
+        filtered = [row for row in filtered if validation_category.lower() in _row_text(row).lower()]
+    if active_only:
+        filtered = [
+            row
+            for row in filtered
+            if str(_field(row, "status", "active") or "").lower() == "active"
+        ]
+    if unresolved_only:
+        filtered = [row for row in filtered if not _is_resolved_command(row)]
+    return [row for row in filtered if _text_matches(row, query=query, tags=tags)]
+
+
+def _limited(rows: list[Any], limit: int) -> list[Any]:
+    return rows[:limit]
+
+
+def _normalize_task_status(status: str) -> str:
+    normalized = status.strip().lower()
+    return "all" if normalized == "all" else normalized or "pending"
+
+
+def _task_status_counts(tasks: list[Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for task in tasks:
+        task_status = str(getattr(task, "status", "") or "unknown")
+        counts[task_status] = counts.get(task_status, 0) + 1
+    return counts
+
+
+def _ordered_task_statuses(counts: dict[str, int]) -> list[str]:
+    preferred = ["pending", "in_progress", "blocked", "done", "archived", "cancelled"]
+    ordered = [status for status in preferred if status in counts]
+    ordered.extend(sorted(status for status in counts if status not in preferred))
+    return ordered
+
+
+def _task_count_label(status: str, count: int) -> str:
+    if status == "all":
+        return f"{count} total task(s)"
+    return f"{count} {status} task(s)"
+
+
 def _run_memory_call(callable_obj):
     try:
         return callable_obj()
+    except typer.Exit:
+        raise
     except ConfigError as exc:
         _emit(f"Configuration error: {exc}")
         raise typer.Exit(1) from exc
@@ -212,14 +343,24 @@ def _record_fallback_lesson_if_present() -> None:
         return
 
 
-def _print_tasks(tasks, title: str) -> None:
+def _print_tasks(
+    tasks,
+    title: str,
+    status_label: str = "all",
+    total_count: int | None = None,
+    other_statuses_exist: bool = False,
+) -> None:
     _section(title)
     for task in tasks:
         _emit(
             f"- #{task.id} [{task.status or ''}/{task.priority or ''}] "
             f"{task.assigned_agent or ''}: {_clip(task.title, 80)} ({task.created_at})"
         )
-    _emit(f"{len(tasks)} task(s).")
+    _emit(f"{_task_count_label(status_label, len(tasks))}.")
+    if total_count is not None:
+        _emit(f"Total task count: {total_count} task(s).")
+    if other_statuses_exist:
+        _emit("Other task statuses exist.")
 
 
 def _print_task_logs(task_logs, title: str) -> None:
@@ -252,12 +393,39 @@ def _print_lessons(lessons, title: str) -> None:
 def _print_commands(commands, title: str) -> None:
     _section(title)
     for command in commands:
+        diagnostic_status = "resolved" if _is_resolved_command(command) else "unresolved"
         _emit(
             f"- #{command.id} {command.agent_name or ''}/{command.shell_type or ''} "
-            f"ok={bool(command.success_flag)} command={_clip(command.command_text, 80)} "
+            f"ok={bool(command.success_flag)} diagnostic={diagnostic_status} command={_clip(command.command_text, 80)} "
             f"error={_clip(command.error_message, 80)} ({command.created_at})"
         )
     _emit(f"{len(commands)} command(s).")
+
+
+def _print_orchestration_tasks(tasks: list[dict[str, object]], title: str) -> None:
+    _section(title)
+    for task in tasks:
+        dependencies = ", ".join(str(item) for item in task.get("dependencies", []) or [])
+        files = ", ".join(str(item) for item in task.get("files", []) or [])
+        detail = []
+        if dependencies:
+            detail.append(f"deps={dependencies}")
+        if files:
+            detail.append(f"files={files}")
+        suffix = f" {'; '.join(detail)}" if detail else ""
+        _emit(f"- {task.get('task_id')} [{task.get('status')}] execution={task.get('execution_id')}{suffix}")
+    _emit(f"{len(tasks)} orchestration task(s).")
+
+
+def _print_validations(validations: list[dict[str, object]], title: str) -> None:
+    _section(title)
+    for validation in validations:
+        status = "passed" if validation.get("success") else "failed"
+        _emit(
+            f"- task={validation.get('task_id')} [{status}] command={_clip(validation.get('command'), 90)} "
+            f"output={_clip(validation.get('output'), 80)} ({validation.get('created_at')})"
+        )
+    _emit(f"{len(validations)} validation(s).")
 
 
 def _print_snapshots(snapshots, title: str) -> None:
@@ -283,25 +451,191 @@ def check() -> None:
 
 @app.command()
 def bootstrap(
+    mode: str = typer.Option(
+        "new-task",
+        "--mode",
+        help="Bootstrap mode: new-task, continue-task, debugging, validation or general.",
+    ),
     limit: int = typer.Option(5, "--limit", "-n", min=1, help="Rows to show per section."),
     status: str = typer.Option("pending", "--status", "-s", help="Task status to show."),
     lesson_category: str = typer.Option("", "--lesson-category", "-c", help="Optional lesson category filter."),
+    title: str = typer.Option("", "--title", help="New task title used as relevance text."),
+    task_id: str = typer.Option("", "--task-id", help="Task id for continue-task mode."),
+    query: str = typer.Option("", "--query", "-q", help="Query text for scoped retrieval."),
+    category: str = typer.Option("", "--category", "-g", help="Category filter for lessons, diagnostics or validation."),
+    tags: str = typer.Option("", "--tags", help="Comma-separated tag text filter."),
+    agent: str = typer.Option("", "--agent", "-a", help="Agent filter."),
+    active_only: bool = typer.Option(False, "--active-only", help="Only show active records where supported."),
+    unresolved_only: bool = typer.Option(False, "--unresolved-only", help="Only show unresolved diagnostics where supported."),
 ) -> None:
     """Show the memory bundle Codex should read before work."""
     def call() -> None:
         _record_fallback_lesson_if_present()
-        _section("Codex memory bootstrap")
+        normalized_mode = mode.strip().lower() or "new-task"
+        if normalized_mode == "minimal":
+            normalized_mode = "new-task"
+        allowed_modes = {"general", "new-task", "continue-task", "debugging", "validation"}
+        if normalized_mode not in allowed_modes:
+            _emit(f"Unknown bootstrap mode: {mode}")
+            _emit(f"Valid modes: {', '.join(sorted(allowed_modes))}")
+            raise typer.Exit(2)
+        if normalized_mode == "continue-task" and not task_id.strip():
+            _emit("bootstrap --mode continue-task requires --task-id.")
+            raise typer.Exit(2)
+        if normalized_mode == "debugging" and not query.strip() and not category.strip():
+            _emit("bootstrap --mode debugging requires --query or --category.")
+            raise typer.Exit(2)
+
+        task_status = _normalize_task_status(status)
+        relevance_query = query or title
+        effective_category = category or lesson_category
+        effective_active_only = active_only or normalized_mode == "new-task"
+        effective_unresolved_only = unresolved_only
+
+        _section(f"Codex memory bootstrap ({normalized_mode})")
         _print_runtime_panel()
         with open_context() as context:
             _print_backend_panel(context)
-            tasks = context.tasks(status, limit=limit)
-            decisions = context.decisions(limit=limit)
-            lessons = context.lessons(lesson_category or None, limit=limit)
-            failed_commands = context.commands(limit=limit, success_flag=False)
-        _print_tasks(tasks, f"Tasks ({status})")
-        _print_decisions(decisions, "Recent decisions")
-        _print_lessons(lessons, "Recent lessons")
-        _print_commands(failed_commands, "Recent failed commands")
+
+            if normalized_mode == "general":
+                all_tasks = context.tasks("all", limit=None)
+                tasks = context.tasks(task_status, limit=limit)
+                decisions = context.decisions("active" if active_only else None, limit=limit)
+                lessons = context.lessons(effective_category or None, limit=limit)
+                failed_commands = context.commands(limit=limit, success_flag=False)
+                if unresolved_only:
+                    failed_commands = _filter_rows(failed_commands, unresolved_only=True)
+                _print_tasks(
+                    tasks,
+                    f"Tasks ({task_status})",
+                    status_label=task_status,
+                    total_count=len(all_tasks),
+                    other_statuses_exist=not tasks and bool(all_tasks) and task_status != "all",
+                )
+                _print_decisions(decisions, "Recent decisions")
+                _print_lessons(lessons, "Recent lessons")
+                _print_commands(failed_commands, "Historical diagnostics")
+                return
+
+            if normalized_mode == "new-task":
+                all_tasks = context.tasks("all", limit=None)
+                pending = context.tasks("pending", limit=limit)
+                decisions = _filter_rows(
+                    context.decisions("active", limit=50),
+                    query=relevance_query,
+                    tags=tags,
+                    active_only=effective_active_only,
+                )
+                if not relevance_query and not tags:
+                    decisions = [decision for decision in decisions if _is_global_decision(decision)]
+                lessons = []
+                if relevance_query or tags or effective_category:
+                    lessons = _filter_rows(
+                        context.lessons(effective_category or None, limit=50),
+                        query=relevance_query,
+                        tags=tags,
+                        category=effective_category,
+                    )
+                _print_tasks(
+                    pending,
+                    "Pending tasks",
+                    status_label="pending",
+                    total_count=len(all_tasks),
+                    other_statuses_exist=not pending and bool(all_tasks),
+                )
+                _print_decisions(_limited(decisions, limit), "Active global or relevant decisions")
+                _print_lessons(_limited(lessons, limit), "Relevant lessons")
+                _section("Historical diagnostics")
+                _emit("Skipped by default for new-task mode; use --mode debugging or --mode general to inspect them.")
+                return
+
+            if normalized_mode == "continue-task":
+                task_id_text = task_id.strip()
+                task_rows = []
+                if task_id_text.isdigit():
+                    for task_status in ("pending", "in_progress", "blocked", "done", "cancelled"):
+                        task_rows.extend([task for task in context.tasks(task_status, limit=100) if str(task.id) == task_id_text])
+                task_logs = context.task_logs(task_id=int(task_id_text), limit=limit) if task_id_text.isdigit() else []
+                orchestration_task = None
+                validation = None
+                try:
+                    orchestration_task = context.orchestration_task(task_id_text)
+                    validation = context.orchestration_validation(task_id_text)
+                except Exception as exc:
+                    _emit(f"Orchestration lookup skipped: {_clip(exc, 160)}")
+                orchestration_tasks = [orchestration_task] if orchestration_task else []
+                validations = []
+                if validation:
+                    validations.append(validation)
+                related_query = relevance_query or task_id_text
+                decisions = _filter_rows(context.decisions(limit=50), query=related_query, tags=tags, active_only=effective_active_only)
+                commands = _filter_rows(
+                    context.commands(limit=100),
+                    query=related_query,
+                    tags=tags,
+                    agent=agent,
+                    unresolved_only=unresolved_only,
+                )
+                lessons = _filter_rows(
+                    context.lessons(effective_category or None, limit=50),
+                    query=related_query,
+                    tags=tags,
+                    category=effective_category,
+                )
+                _print_tasks(_limited(task_rows, limit), "Task details", status_label="matching")
+                _print_orchestration_tasks(orchestration_tasks, "Orchestration task details")
+                _print_task_logs(task_logs, "Task logs")
+                _print_decisions(_limited(decisions, limit), "Related decisions")
+                _print_validations(validations, "Related validations")
+                _print_commands(_limited(commands, limit), "Related commands")
+                _print_lessons(_limited(lessons, limit), "Related lessons")
+                return
+
+            if normalized_mode == "debugging":
+                decisions = _filter_rows(context.decisions("active", limit=50), query=relevance_query, tags=tags)
+                failed_commands = _filter_rows(
+                    context.commands(limit=100, success_flag=False),
+                    query=relevance_query,
+                    tags=tags,
+                    category=effective_category,
+                    agent=agent,
+                    unresolved_only=effective_unresolved_only,
+                )
+                lessons = _filter_rows(
+                    context.lessons(effective_category or None, limit=100),
+                    query=relevance_query,
+                    tags=tags,
+                    category=effective_category,
+                )
+                _print_commands(_limited(failed_commands, limit), "Matching failed commands")
+                _print_lessons(_limited(lessons, limit), "Matching lessons")
+                _print_decisions(_limited(decisions, limit), "Relevant decisions")
+                return
+
+            validation_terms = effective_category or "test hook build pytest pre-commit validation"
+            try:
+                orchestration_tasks = context.orchestration_tasks()
+                validations = [
+                    row
+                    for task in orchestration_tasks
+                    if (row := context.orchestration_validation(str(task.get("task_id")))) is not None
+                ]
+            except Exception as exc:
+                _emit(f"Validation records skipped: {_clip(exc, 160)}")
+                validations = []
+            validations = _filter_rows(validations, query=relevance_query, tags=tags, validation_category=effective_category)
+            failed_validations = [row for row in validations if not row.get("success")]
+            commands = _filter_rows(
+                context.commands(limit=100),
+                query=relevance_query,
+                tags=tags,
+                category=validation_terms,
+                agent=agent,
+                unresolved_only=unresolved_only,
+            )
+            _print_validations(_limited(validations, limit), "Recent validation records")
+            _print_validations(_limited(failed_validations, limit), "Failed validations")
+            _print_commands(_limited(commands, limit), "Test, hook and build commands")
 
     _run_memory_call(call)
 
@@ -443,14 +777,39 @@ def task_add(
 
 @task_app.command("list")
 def task_list(
-    status: str = typer.Option("pending", "--status", "-s", help="Task status."),
+    status: str = typer.Option("pending", "--status", "-s", help="Task status, or 'all'."),
     limit: int = typer.Option(20, "--limit", "-n", min=1, help="Maximum rows."),
 ) -> None:
     """List tasks by status."""
     def call() -> None:
+        task_status = _normalize_task_status(status)
         with open_context() as context:
-            tasks = context.tasks(status, limit=limit)
-        _print_tasks(tasks, f"Tasks ({status})")
+            tasks = context.tasks(task_status, limit=limit)
+            all_tasks = context.tasks("all", limit=None)
+        _print_tasks(
+            tasks,
+            f"Tasks ({task_status})",
+            status_label=task_status,
+            total_count=len(all_tasks),
+            other_statuses_exist=not tasks and bool(all_tasks) and task_status != "all",
+        )
+
+    _run_memory_call(call)
+
+
+@task_app.command("summary")
+def task_summary() -> None:
+    """Show task counts grouped by status."""
+    def call() -> None:
+        with open_context() as context:
+            all_tasks = context.tasks("all", limit=None)
+        counts = _task_status_counts(all_tasks)
+        _section("Task summary")
+        if not counts:
+            _emit("Total: 0")
+            return
+        for task_status in _ordered_task_statuses(counts):
+            _emit(f"{task_status.replace('_', ' ').title()}: {counts[task_status]}")
 
     _run_memory_call(call)
 

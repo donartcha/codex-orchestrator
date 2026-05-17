@@ -68,7 +68,9 @@ class FileBackend:
         )
 
     def tasks(self, status="pending", limit=None):
-        rows = [row for row in self._objects("tasks") if row.status == status]
+        rows = self._objects("tasks")
+        if status and status != "all":
+            rows = [row for row in rows if row.status == status]
         return self._limit(rows, limit)
 
     def set_task_status(self, task_id, status):

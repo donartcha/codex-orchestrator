@@ -124,7 +124,7 @@ class CodexContext:
             payload["priority"],
         )
 
-    def tasks(self, status: str = "pending", limit: int | None = None) -> list[Task]:
+    def tasks(self, status: str | None = "pending", limit: int | None = None) -> list[Task]:
         return self.backend.tasks(status, limit)
 
     def set_task_status(self, task_id: int, status: str) -> Task | None:
