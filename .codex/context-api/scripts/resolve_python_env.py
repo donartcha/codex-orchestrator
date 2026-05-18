@@ -208,9 +208,22 @@ def resolve_python_environment() -> PythonResolution:
 
     fallback_from = ""
     fallback_applied = False
+    current_candidate = None
+    if current:
+        for candidate in candidates:
+            if candidate.exists and Path(candidate.path).resolve() == current:
+                current_candidate = candidate
+                break
     if current and Path(selected.path).resolve() != current:
-        fallback_applied = True
-        fallback_from = str(current)
+        current_is_usable = bool(
+            current_candidate
+            and current_candidate.runnable
+            and not current_candidate.missing_imports
+            and not current_candidate.broken_imports
+        )
+        if not current_is_usable:
+            fallback_applied = True
+            fallback_from = str(current)
 
     if selected.missing_imports:
         warnings.append(f"Selected interpreter is missing required imports: {', '.join(selected.missing_imports)}")
@@ -222,7 +235,10 @@ def resolve_python_environment() -> PythonResolution:
 
     reason = f"Selected {selected.label}"
     if selected.is_workspace_virtualenv:
-        reason += " because workspace-local .venv has required imports"
+        if fallback_applied:
+            reason += " because workspace-local .venv has required imports"
+        else:
+            reason += " by workspace preference"
     elif not selected.missing_imports:
         reason += " because it has required imports"
 

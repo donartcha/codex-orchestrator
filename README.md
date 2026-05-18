@@ -1,4 +1,4 @@
-# Antigravity Workspace
+# Codex Orchestrator
 
 This repository contains Codex orchestration configuration, local context tooling and durable project guidance. It is intentionally portable: committed files should work from any clone without depending on one developer's workstation layout.
 

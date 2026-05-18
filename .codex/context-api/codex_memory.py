@@ -276,7 +276,7 @@ def _print_runtime_panel() -> None:
     resolution = resolve_python_environment()
     validation = validate_runtime()
     fallback_from = os.environ.get("CODEX_MEMORY_FALLBACK_FROM") or resolution.fallback_from
-    fallback_to = os.environ.get("CODEX_MEMORY_FALLBACK_TO") or resolution.selected_python
+    fallback_to = os.environ.get("CODEX_MEMORY_FALLBACK_TO")
     fallback_state = "fallback used" if fallback_from else validation.fallback_state
     runtime_status = "FALLBACK_USED" if fallback_from else validation.status
     _section("Runtime environment")
@@ -288,8 +288,9 @@ def _print_runtime_panel() -> None:
     _emit(f"Python reason: {resolution.reason}")
     if fallback_from:
         _emit(f"Fallback from: {fallback_from}")
-    if fallback_to:
-        _emit(f"Fallback to: {fallback_to}")
+        _emit(f"Fallback to: {fallback_to or resolution.selected_python}")
+    else:
+        _emit(f"Selected Python: {resolution.selected_python or '(none)'}")
     if validation.warnings:
         _emit("Environment warnings:")
         for warning in validation.warnings:
