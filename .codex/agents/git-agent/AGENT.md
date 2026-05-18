@@ -83,6 +83,7 @@ git push origin main --tags
 - Prefer normal signed commits when the user environment has an unlocked `gpg-agent`.
 - If signing fails because `gpg-agent` is unavailable, either ask the user to unlock GPG locally or use `-c commit.gpgsign=false` for that specific command when unsigned local commits are acceptable.
 - Do not disable signing globally.
+- Apply GPG executable recovery in every repository, including nested repositories, before falling back to unsigned commits. The target repository is the repository whose commit, merge, tag or push workflow is currently being operated.
 - On Windows, Git may fail with `gpg: skipped "<key>": No secret key` even when `gpg --list-secret-keys` and direct signing work. In that case, check the executable path:
 
 ```powershell
@@ -91,12 +92,14 @@ git config --show-origin --get gpg.program
 'codex-sign-test' | gpg --status-fd=2 -bsau <SIGNING_KEY>
 ```
 
-- If direct GPG signing works but Git signing fails, configure the repository-local `gpg.program` to the absolute GnuPG path rather than disabling signing:
+- If direct GPG signing works but Git signing fails, configure the repository-local `gpg.program` in the target repository to the absolute GnuPG path rather than disabling signing. Do this with `git -C <repo>` when operating outside the repository root:
 
 ```powershell
 git config gpg.program "C:/Program Files (x86)/GnuPG/bin/gpg.exe"
+git -C <repo> config gpg.program "C:/Program Files (x86)/GnuPG/bin/gpg.exe"
 ```
 
+- Re-run the failed signed Git operation after setting repository-local `gpg.program`; keep the setting local to that repository and never change global Git configuration for this recovery unless the user explicitly asks for global scope.
 - When available, resolve `<SIGNING_KEY>` from `CODEX_GIT_AGENT_SIGNING_KEY` and use `CODEX_GIT_AGENT_SIGNING_FINGERPRINT` only for verification output.
 - For one-off recovery while diagnosing, `git -c gpg.program="C:/Program Files (x86)/GnuPG/bin/gpg.exe" commit ...` is preferred over global config changes.
 
