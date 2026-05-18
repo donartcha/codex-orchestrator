@@ -75,6 +75,7 @@ class BackendParityTests(unittest.TestCase):
         return {
             "pending_tasks": _payload(backend.tasks("pending", limit=10), "title", "priority", "assigned_agent", "status"),
             "done_tasks": _payload(backend.tasks("done", limit=10), "title", "priority", "assigned_agent", "status"),
+            "all_tasks": _payload(backend.tasks("all", limit=10), "title", "priority", "assigned_agent", "status"),
             "limited_tasks": _payload(backend.tasks("pending", limit=1), "title"),
             "task_logs": _payload(backend.task_logs(task_id=second_task.id, limit=10), "agent_name", "log_type", "content"),
             "orchestration_executions": [

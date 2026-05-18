@@ -252,6 +252,7 @@ Task summaries must be stored as `task_logs`. Lessons are only for reusable futu
 - Use `reviewer-agent` for code review, regressions and risks.
 - Use `testing-agent` for test strategy, execution and coverage follow-ups.
 - Use `debugging-agent` for root cause analysis and repeated failures.
+- Use `git-agent` for Git synchronization, remotes, commits, GPG signing recovery and nested repository state.
 - Use `documentation-agent` for durable docs and handovers.
 - Use `powershell-agent` for Windows shell execution and recovery.
 - Avoid duplicate tasks and decisions by checking memory first.
