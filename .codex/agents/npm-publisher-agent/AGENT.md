@@ -18,7 +18,7 @@ Publish npm packages from this workspace only after local validation, package in
 - Validate package scripts, tests and generated tarball contents.
 - Create release commits and tags through the repo's configured Git/GPG policy.
 - Publish to npm using `NPM_TOKEN` safely through an ephemeral `.npmrc`.
-- Verify npm registry and isolated package execution first; use global installation only as an optional diagnostic smoke test.
+- Verify npm registry, isolated package execution and a clean global install of the exact published version.
 - Push release commits and tags to GitHub using normal Git credentials first, falling back to `GITHUB_TOKEN` only when needed.
 - Record important outcomes through the official context API without storing secrets.
 
@@ -132,33 +132,31 @@ If `npm.cmd publish` times out after creating the ephemeral `.npmrc`, do not ass
 
 # Verification
 
-After publish, prefer the fast authoritative checks first:
+After publish, verify the registry and isolated execution first:
 
 ```powershell
 $env:npm_config_cache=(Join-Path (Get-Location) '.npm-cache')
 npm.cmd view <package-name> version --registry=https://registry.npmjs.org/
-npm.cmd exec --yes --package <package-name>@latest -- openlag --version
+npm.cmd exec --yes --package <package-name>@<new-version> -- openlag --version
 ```
 
-These two checks are the default proof of publication:
+These two checks prove the package exists in the registry and that the published CLI works without relying on any previously installed global binary:
 
-- `npm view` confirms the registry version and `latest` resolution.
-- `npm exec --package <package-name>@latest -- openlag --version` confirms the published CLI works from `@latest` without touching global installation.
+- `npm view` confirms the registry version.
+- `npm exec --package <package-name>@<new-version> -- openlag --version` confirms the exact published CLI version works.
 
-Do not loop on global uninstall/install after these checks pass. Global installation is slower and can be blocked by Windows file locks, npm global cache state or active Node/npm processes; it is not required to prove the package was published.
-
-Run global install only when explicitly requested or when investigating a global-install bug:
+Then always run a clean global installation of the exact version just published. Do not install `@latest` for this step; installing the exact version avoids dist-tag propagation ambiguity and prevents retry loops caused by stale global state.
 
 ```powershell
 $env:npm_config_cache=(Join-Path (Get-Location) '.npm-cache')
 npm.cmd uninstall -g <package-name>
-npm.cmd install -g <package-name>@latest
+npm.cmd install -g <package-name>@<new-version>
 openlag --version
 where.exe openlag
 npm.cmd list -g --depth=0
 ```
 
-If global install fails with `EBUSY`, inspect Node/npm processes once. Do not kill processes without user approval and do not keep retrying blindly. Report the lock and rely on successful `npm view` plus `npm exec` as release verification.
+If global install fails with `EBUSY`, inspect Node/npm processes once. Do not kill processes without user approval and do not keep retrying blindly. Report the lock, the successful registry/isolated checks and the exact command that remains blocked.
 
 # GitHub Push
 
@@ -175,8 +173,8 @@ Do not embed `GITHUB_TOKEN` in remote URLs. If GitHub auth fails, use a one-comm
 # Completion Criteria
 
 - npm registry reports the new version.
-- `npm exec --package <package-name>@latest -- openlag --version` reports the new CLI version from `@latest`.
-- Global install verification is optional unless the user explicitly requests it or the release changes global-install behavior.
+- `npm exec --package <package-name>@<new-version> -- openlag --version` reports the new CLI version.
+- A clean global reinstall with `npm.cmd uninstall -g <package-name>` followed by `npm.cmd install -g <package-name>@<new-version>` reports the new CLI version.
 - Release commit and tag exist locally.
 - GitHub `origin/main` and release tags are pushed.
 - Final Git status is clean or any remaining changes are clearly explained.
