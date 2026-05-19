@@ -152,9 +152,11 @@ $env:npm_config_cache=(Join-Path (Get-Location) '.npm-cache')
 npm.cmd uninstall -g <package-name>
 npm.cmd install -g <package-name>@<new-version>
 openlag --version
-where.exe openlag
+Get-Command openlag | Format-List Source,CommandType,Definition
 npm.cmd list -g --depth=0
 ```
+
+Use `Get-Command openlag` as the authoritative PowerShell command-resolution check. `where.exe openlag` can fail in PowerShell sessions even when npm created valid `openlag`, `openlag.cmd` and `openlag.ps1` shims and `openlag --version` works.
 
 If global install fails with `EBUSY`, inspect Node/npm processes once. Do not kill processes without user approval and do not keep retrying blindly. Report the lock, the successful registry/isolated checks and the exact command that remains blocked.
 
@@ -175,6 +177,7 @@ Do not embed `GITHUB_TOKEN` in remote URLs. If GitHub auth fails, use a one-comm
 - npm registry reports the new version.
 - `npm exec --package <package-name>@<new-version> -- openlag --version` reports the new CLI version.
 - A clean global reinstall with `npm.cmd uninstall -g <package-name>` followed by `npm.cmd install -g <package-name>@<new-version>` reports the new CLI version.
+- `Get-Command openlag` resolves the installed global shim in PowerShell.
 - Release commit and tag exist locally.
 - GitHub `origin/main` and release tags are pushed.
 - Final Git status is clean or any remaining changes are clearly explained.
