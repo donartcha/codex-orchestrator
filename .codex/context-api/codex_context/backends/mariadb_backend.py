@@ -33,6 +33,7 @@ from ..repositories import (
     upsert_orchestration_task,
     upsert_orchestration_validation,
 )
+from ..schema_migrations import ensure_task_scope_columns
 from .base import BackendStatus
 
 
@@ -44,6 +45,7 @@ class MariaDBBackend:
         self.engine = engine or create_db_engine()
         with self.engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+        ensure_task_scope_columns(self.engine)
         self.status = BackendStatus(name=self.name, active=True, details={"url": self.engine.url.render_as_string(hide_password=True)})
 
     def close(self) -> None:
@@ -67,13 +69,13 @@ class MariaDBBackend:
         with self.session() as session:
             return update_task_status(session, task_id, status)
 
-    def remember_snapshot(self, snapshot_type, title=None, content="", tags=None):
+    def remember_snapshot(self, snapshot_type, title=None, content="", tags=None, task_id=None):
         with self.session() as session:
-            return add_snapshot(session, snapshot_type, title, content, tags)
+            return add_snapshot(session, snapshot_type, title, content, tags, task_id)
 
-    def snapshots(self, limit=None):
+    def snapshots(self, limit=None, task_id=None):
         with self.session() as session:
-            return list_snapshots(session, limit)
+            return list_snapshots(session, limit, task_id)
 
     def remember_task_log(self, task_id, content, agent_name=None, log_type="summary"):
         with self.session() as session:
@@ -128,30 +130,30 @@ class MariaDBBackend:
         with self.session() as session:
             return replace_orchestration_conflicts(session, execution_id, conflicts)
 
-    def remember_decision(self, decision_key, title, rationale, consequences):
+    def remember_decision(self, decision_key, title, rationale, consequences, task_id=None):
         with self.session() as session:
-            return add_decision(session, decision_key, title, rationale, consequences)
+            return add_decision(session, decision_key, title, rationale, consequences, task_id)
 
-    def decisions(self, status=None, limit=None):
+    def decisions(self, status=None, limit=None, task_id=None):
         with self.session() as session:
-            return list_decisions(session, status, limit)
+            return list_decisions(session, status, limit, task_id)
 
     def supersede_decision(self, old_id, new_id):
         with self.session() as session:
             return supersede_decision(session, old_id, new_id)
 
-    def remember_command(self, agent_name, shell_type, command_text, success_flag, error_message=None, correction_applied=None):
+    def remember_command(self, agent_name, shell_type, command_text, success_flag, error_message=None, correction_applied=None, task_id=None):
         with self.session() as session:
-            return add_command_log(session, agent_name, shell_type, command_text, success_flag, error_message, correction_applied)
+            return add_command_log(session, agent_name, shell_type, command_text, success_flag, error_message, correction_applied, task_id)
 
-    def commands(self, limit=20, success_flag=None):
+    def commands(self, limit=20, success_flag=None, task_id=None):
         with self.session() as session:
-            return list_command_history(session, limit, success_flag)
+            return list_command_history(session, limit, success_flag, task_id)
 
-    def remember_lesson(self, category, problem_description, solution_description, prevention_strategy):
+    def remember_lesson(self, category, problem_description, solution_description, prevention_strategy, task_id=None):
         with self.session() as session:
-            return add_lesson(session, category, problem_description, solution_description, prevention_strategy)
+            return add_lesson(session, category, problem_description, solution_description, prevention_strategy, task_id)
 
-    def lessons(self, category=None, limit=None):
+    def lessons(self, category=None, limit=None, task_id=None):
         with self.session() as session:
-            return list_lessons(session, category, limit)
+            return list_lessons(session, category, limit, task_id)

@@ -18,6 +18,7 @@ def main(
     success_flag: bool = typer.Option(False, "--success-flag/--failed", help="Whether the command succeeded."),
     error_message: str = typer.Option("", "--error-message", help="Error message, if any."),
     correction_applied: str = typer.Option("", "--correction-applied", help="Correction that fixed or mitigated the issue."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     try:
         with open_context() as context:
@@ -28,6 +29,7 @@ def main(
                 success_flag=success_flag,
                 error_message=error_message or None,
                 correction_applied=correction_applied or None,
+                task_id=task_id,
             )
             console.print(f"[green]Command log added[/green] id={command.id} success={command.success_flag}")
     except ConfigError as exc:

@@ -83,10 +83,11 @@ class FileBackend:
                 return self._object("tasks", row)
         return None
 
-    def remember_snapshot(self, snapshot_type, title=None, content="", tags=None):
+    def remember_snapshot(self, snapshot_type, title=None, content="", tags=None, task_id=None):
         return self._append(
             "snapshots",
             {
+                "task_id": task_id,
                 "snapshot_type": snapshot_type,
                 "title": title,
                 "content": content,
@@ -94,8 +95,11 @@ class FileBackend:
             },
         )
 
-    def snapshots(self, limit=None):
-        return self._limit(self._objects("snapshots"), limit)
+    def snapshots(self, limit=None, task_id=None):
+        rows = self._objects("snapshots")
+        if task_id is not None:
+            rows = [row for row in rows if str(getattr(row, "task_id", "")) == str(task_id)]
+        return self._limit(rows, limit)
 
     def remember_task_log(self, task_id, content, agent_name=None, log_type="summary"):
         return self._append(
@@ -214,7 +218,7 @@ class FileBackend:
         self._write(store)
         return created
 
-    def remember_decision(self, decision_key, title, rationale, consequences):
+    def remember_decision(self, decision_key, title, rationale, consequences, task_id=None):
         # Enforce unique decision_key constraint to match SQL backends
         store = self._read()
         for row in store["decisions"]:
@@ -223,6 +227,7 @@ class FileBackend:
         return self._append(
             "decisions",
             {
+                "task_id": task_id,
                 "decision_key": decision_key,
                 "title": title,
                 "rationale": rationale,
@@ -231,10 +236,12 @@ class FileBackend:
             },
         )
 
-    def decisions(self, status=None, limit=None):
+    def decisions(self, status=None, limit=None, task_id=None):
         rows = self._objects("decisions")
         if status:
             rows = [row for row in rows if row.status == status]
+        if task_id is not None:
+            rows = [row for row in rows if str(getattr(row, "task_id", "")) == str(task_id)]
         return self._limit(rows, limit)
 
     def supersede_decision(self, old_id, new_id):
@@ -252,10 +259,11 @@ class FileBackend:
                 return self._object("decisions", row)
         return None
 
-    def remember_command(self, agent_name, shell_type, command_text, success_flag, error_message=None, correction_applied=None):
+    def remember_command(self, agent_name, shell_type, command_text, success_flag, error_message=None, correction_applied=None, task_id=None):
         return self._append(
             "commands",
             {
+                "task_id": task_id,
                 "agent_name": agent_name,
                 "shell_type": shell_type,
                 "command_text": command_text,
@@ -265,16 +273,19 @@ class FileBackend:
             },
         )
 
-    def commands(self, limit=20, success_flag=None):
+    def commands(self, limit=20, success_flag=None, task_id=None):
         rows = self._objects("commands")
         if success_flag is not None:
             rows = [row for row in rows if bool(row.success_flag) == bool(success_flag)]
+        if task_id is not None:
+            rows = [row for row in rows if str(getattr(row, "task_id", "")) == str(task_id)]
         return self._limit(rows, limit)
 
-    def remember_lesson(self, category, problem_description, solution_description, prevention_strategy):
+    def remember_lesson(self, category, problem_description, solution_description, prevention_strategy, task_id=None):
         return self._append(
             "lessons",
             {
+                "task_id": task_id,
                 "category": category,
                 "problem_description": problem_description,
                 "solution_description": solution_description,
@@ -282,10 +293,12 @@ class FileBackend:
             },
         )
 
-    def lessons(self, category=None, limit=None):
+    def lessons(self, category=None, limit=None, task_id=None):
         rows = self._objects("lessons")
         if category:
             rows = [row for row in rows if row.category == category]
+        if task_id is not None:
+            rows = [row for row in rows if str(getattr(row, "task_id", "")) == str(task_id)]
         return self._limit(rows, limit)
 
     def _empty_store(self) -> dict[str, list[dict[str, object]]]:

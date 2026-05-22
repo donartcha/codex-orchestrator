@@ -14,13 +14,15 @@ console = Console()
 
 def main(
     category: str = typer.Option("", "--category", "-c", help="Optional lesson category filter."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     try:
         with open_context() as context:
-            lessons = context.lessons(category or None)
+            lessons = context.lessons(category or None, task_id=task_id)
 
         table = Table(title="Lessons learned")
         table.add_column("ID", justify="right")
+        table.add_column("Task")
         table.add_column("Category")
         table.add_column("Problem")
         table.add_column("Created")
@@ -28,6 +30,7 @@ def main(
         for lesson in lessons:
             table.add_row(
                 str(lesson.id),
+                str(lesson.task_id or ""),
                 lesson.category or "",
                 lesson.problem_description or "",
                 str(lesson.created_at),

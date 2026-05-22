@@ -22,7 +22,11 @@ with open_context() as context:
     context.remember_decision("key", "Title", "Rationale", "Consequences")
     context.remember_command("codex", "powershell", "pytest tests -v", True)
     context.remember_lesson("testing", "Problem", "Solution", "Prevention")
+    context.remember_lesson("testing", "Task problem", "Task solution", "Prevention", task_id=1)
+    task_lessons = context.lessons(category="testing", task_id=1, limit=10)
 ```
+
+Decisions, commands, lessons and snapshots accept nullable `task_id` values. Omit `task_id` for global memory; pass it when the record belongs to one task execution and should be retrievable with `--task-id`.
 
 ## Lifecycle
 
@@ -63,8 +67,13 @@ cd .codex/context-api
 .\.venv\Scripts\python.exe codex_memory.py backend-status
 .\.venv\Scripts\python.exe codex_memory.py task list --status all
 .\.venv\Scripts\python.exe codex_memory.py task summary
+.\.venv\Scripts\python.exe codex_memory.py lesson add --category "powershell" --problem "What failed" --solution "What fixed it" --prevention "How to avoid it"
+.\.venv\Scripts\python.exe codex_memory.py lesson list --limit 10
+.\.venv\Scripts\python.exe codex_memory.py lesson list --task-id 1 --limit 10
 .\.venv\Scripts\python.exe codex_memory.py snapshot list
 ```
+
+`finish` records a task log and optional task status. It does not record reusable lessons. Use `lesson add` when a pattern should be available to future agents.
 
 ### Bootstrap modes
 
@@ -83,6 +92,7 @@ Modes:
 - `new-task`: default. Shows runtime warnings, backend status, pending tasks, active global or relevant decisions, and relevant lessons only when scoped by title/query/category/tags. Historical failed commands are skipped.
 - `general`: manual full overview with recent tasks, decisions, lessons and historical diagnostics.
 - `continue-task`: requires `--task-id`; shows task details, task logs, related decisions, validations, commands and lessons.
+- Task-scoped decisions, commands and lessons are matched by their stored `task_id`; global records remain available through normal list/query modes.
 - `debugging`: requires `--query` or `--category`; shows matching failed commands, lessons and relevant decisions.
 - `validation`: shows recent validation records, failed validations and commands related to tests, hooks and builds.
 
@@ -132,3 +142,15 @@ Done: 12
 Blocked: 1
 Archived: 4
 ```
+
+### Lessons
+
+Lessons are reusable root causes, corrections and prevention strategies. They are not task summaries.
+
+```powershell
+.\.venv\Scripts\python.exe codex_memory.py lesson add --category "ci" --problem "Tests depended on generated files in a warm workspace" --solution "Build required artifacts before tests" --prevention "Validate scripts from a clean checkout"
+.\.venv\Scripts\python.exe codex_memory.py lesson add --task-id 1 --category "ci" --problem "Task-specific CI failure" --solution "Fix for this task" --prevention "Check before similar task work"
+.\.venv\Scripts\python.exe codex_memory.py lesson list --category "ci" --limit 10
+```
+
+Record a lesson when the learning is likely to prevent a future failure. Record a `task log` when the note only explains what happened in the current task.

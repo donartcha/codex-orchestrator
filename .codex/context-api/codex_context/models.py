@@ -34,6 +34,11 @@ class ContextSnapshot(TimestampMixin, Base):
     __tablename__ = "context_snapshots"
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    task_id: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     snapshot_type: Mapped[str] = mapped_column(String(100), nullable=False)
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     content: Mapped[str] = mapped_column(LONG_TEXT_TYPE, nullable=False)
@@ -44,6 +49,11 @@ class ArchitecturalDecision(TimestampMixin, Base):
     __tablename__ = "architectural_decisions"
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    task_id: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     decision_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     rationale: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
@@ -129,6 +139,11 @@ class CommandHistory(CreatedAtMixin, Base):
     __tablename__ = "command_history"
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    task_id: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     agent_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     shell_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     command_text: Mapped[str] = mapped_column(LONG_TEXT_TYPE, nullable=False)
@@ -142,6 +157,11 @@ class LessonLearned(CreatedAtMixin, Base):
     __tablename__ = "lessons_learned"
 
     id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    task_id: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     problem_description: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
     solution_description: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)

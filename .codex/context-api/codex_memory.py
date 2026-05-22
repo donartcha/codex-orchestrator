@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -272,6 +273,17 @@ def _run_memory_call(callable_obj):
         raise typer.Exit(1) from exc
 
 
+def _github_cli_environment() -> tuple[str, str]:
+    workspace_root = CONTEXT_API_ROOT.parents[1]
+    portable_gh = workspace_root / ".codex" / "tools" / "gh.exe"
+    if portable_gh.exists():
+        return ("workspace portable", str(portable_gh))
+    path_gh = shutil.which("gh")
+    if path_gh:
+        return ("PATH fallback", path_gh)
+    return ("missing", str(portable_gh))
+
+
 def _print_runtime_panel() -> None:
     resolution = resolve_python_environment()
     validation = validate_runtime()
@@ -295,6 +307,10 @@ def _print_runtime_panel() -> None:
         _emit("Environment warnings:")
         for warning in validation.warnings:
             _emit(f"- {_clip(warning, 180)}")
+    gh_status, gh_path = _github_cli_environment()
+    _emit("GitHub CLI environment:")
+    _emit(f"- gh: {gh_status}")
+    _emit(f"- path: {gh_path}")
 
 
 def _print_backend_panel(context) -> None:
@@ -377,9 +393,10 @@ def _print_task_logs(task_logs, title: str) -> None:
 def _print_decisions(decisions, title: str) -> None:
     _section(title)
     for decision in decisions:
+        task_suffix = f" task={decision.task_id}" if getattr(decision, "task_id", None) else ""
         _emit(
             f"- #{decision.id} [{decision.status or ''}] {_clip(decision.decision_key, 40)}: "
-            f"{_clip(decision.title, 80)} ({decision.created_at})"
+            f"{_clip(decision.title, 80)}{task_suffix} ({decision.created_at})"
         )
     _emit(f"{len(decisions)} decision(s).")
 
@@ -387,7 +404,8 @@ def _print_decisions(decisions, title: str) -> None:
 def _print_lessons(lessons, title: str) -> None:
     _section(title)
     for lesson in lessons:
-        _emit(f"- #{lesson.id} [{lesson.category or ''}] {_clip(lesson.problem_description, 100)} ({lesson.created_at})")
+        task_suffix = f" task={lesson.task_id}" if getattr(lesson, "task_id", None) else ""
+        _emit(f"- #{lesson.id} [{lesson.category or ''}] {_clip(lesson.problem_description, 100)}{task_suffix} ({lesson.created_at})")
     _emit(f"{len(lessons)} lesson(s).")
 
 
@@ -395,10 +413,11 @@ def _print_commands(commands, title: str) -> None:
     _section(title)
     for command in commands:
         diagnostic_status = "resolved" if _is_resolved_command(command) else "unresolved"
+        task_suffix = f" task={command.task_id}" if getattr(command, "task_id", None) else ""
         _emit(
             f"- #{command.id} {command.agent_name or ''}/{command.shell_type or ''} "
             f"ok={bool(command.success_flag)} diagnostic={diagnostic_status} command={_clip(command.command_text, 80)} "
-            f"error={_clip(command.error_message, 80)} ({command.created_at})"
+            f"error={_clip(command.error_message, 80)}{task_suffix} ({command.created_at})"
         )
     _emit(f"{len(commands)} command(s).")
 
@@ -432,9 +451,10 @@ def _print_validations(validations: list[dict[str, object]], title: str) -> None
 def _print_snapshots(snapshots, title: str) -> None:
     _section(title)
     for snapshot in snapshots:
+        task_suffix = f" task={snapshot.task_id}" if getattr(snapshot, "task_id", None) else ""
         _emit(
             f"- #{snapshot.id} [{snapshot.snapshot_type or ''}] "
-            f"{_clip(snapshot.title, 80)} ({snapshot.created_at})"
+            f"{_clip(snapshot.title, 80)}{task_suffix} ({snapshot.created_at})"
         )
     _emit(f"{len(snapshots)} snapshot(s).")
 
@@ -569,17 +589,23 @@ def bootstrap(
                 if validation:
                     validations.append(validation)
                 related_query = relevance_query or task_id_text
-                decisions = _filter_rows(context.decisions(limit=50), query=related_query, tags=tags, active_only=effective_active_only)
+                related_task_id = int(task_id_text) if task_id_text.isdigit() else None
+                decisions = _filter_rows(
+                    context.decisions(limit=50, task_id=related_task_id),
+                    query=relevance_query,
+                    tags=tags,
+                    active_only=effective_active_only,
+                )
                 commands = _filter_rows(
-                    context.commands(limit=100),
-                    query=related_query,
+                    context.commands(limit=100, task_id=related_task_id),
+                    query=relevance_query,
                     tags=tags,
                     agent=agent,
                     unresolved_only=unresolved_only,
                 )
                 lessons = _filter_rows(
-                    context.lessons(effective_category or None, limit=50),
-                    query=related_query,
+                    context.lessons(effective_category or None, limit=50, task_id=related_task_id),
+                    query=relevance_query,
                     tags=tags,
                     category=effective_category,
                 )
@@ -875,11 +901,12 @@ def decision_add(
     title: str = typer.Option(..., "--title", help="Decision title."),
     rationale: str = typer.Option(..., "--rationale", help="Why this decision was taken."),
     consequences: str = typer.Option("", "--consequences", help="Expected consequences."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     """Add a decision."""
     def call() -> None:
         with open_context() as context:
-            decision = context.remember_decision(key, title, rationale, consequences)
+            decision = context.remember_decision(key, title, rationale, consequences, task_id=task_id)
         _emit(f"Decision added id={decision.id} key={decision.decision_key!r}")
 
     _run_memory_call(call)
@@ -889,11 +916,12 @@ def decision_add(
 def decision_list(
     limit: int = typer.Option(10, "--limit", "-n", min=1, help="Maximum rows."),
     status: str = typer.Option("", "--status", "-s", help="Optional decision status."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     """List decisions."""
     def call() -> None:
         with open_context() as context:
-            decisions = context.decisions(status or None, limit=limit)
+            decisions = context.decisions(status or None, limit=limit, task_id=task_id)
         _print_decisions(decisions, "Decisions")
 
     _run_memory_call(call)
@@ -922,11 +950,12 @@ def lesson_add(
     problem: str = typer.Option(..., "--problem", help="Problem description."),
     solution: str = typer.Option(..., "--solution", help="Solution description."),
     prevention: str = typer.Option(..., "--prevention", help="Prevention strategy."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     """Add a reusable lesson."""
     def call() -> None:
         with open_context() as context:
-            lesson = context.remember_lesson(category, problem, solution, prevention)
+            lesson = context.remember_lesson(category, problem, solution, prevention, task_id=task_id)
         _emit(f"Lesson added id={lesson.id} category={lesson.category!r}")
 
     _run_memory_call(call)
@@ -936,11 +965,12 @@ def lesson_add(
 def lesson_list(
     limit: int = typer.Option(10, "--limit", "-n", min=1, help="Maximum rows."),
     category: str = typer.Option("", "--category", "-c", help="Optional category filter."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     """List lessons."""
     def call() -> None:
         with open_context() as context:
-            lessons = context.lessons(category or None, limit=limit)
+            lessons = context.lessons(category or None, limit=limit, task_id=task_id)
         _print_lessons(lessons, "Lessons")
 
     _run_memory_call(call)
@@ -954,6 +984,7 @@ def command_add(
     success: str = typer.Option(..., "--success", help="Whether the command succeeded: true or false."),
     error: str = typer.Option("", "--error", help="Error message if any."),
     correction: str = typer.Option("", "--correction", help="Correction applied if any."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     """Add a command history row."""
     def call() -> None:
@@ -966,6 +997,7 @@ def command_add(
                 success_flag=success_flag,
                 error_message=error or None,
                 correction_applied=correction or None,
+                task_id=task_id,
             )
         _emit(f"Command added id={command_row.id} success={command_row.success_flag}")
 
@@ -976,11 +1008,12 @@ def command_add(
 def command_list(
     failed_only: bool = typer.Option(False, "--failed-only", help="Show failed commands only."),
     limit: int = typer.Option(10, "--limit", "-n", min=1, help="Maximum rows."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     """List command history."""
     def call() -> None:
         with open_context() as context:
-            commands = context.commands(limit=limit, success_flag=False if failed_only else None)
+            commands = context.commands(limit=limit, success_flag=False if failed_only else None, task_id=task_id)
         _print_commands(commands, "Command history")
 
     _run_memory_call(call)
@@ -991,6 +1024,7 @@ def snapshot_add(
     title: str = typer.Option("", "--title", "-t", help="Snapshot title."),
     snapshot_type: str = typer.Option("manual", "--type", help="Snapshot type."),
     limit: int = typer.Option(100, "--limit", "-n", min=1, help="Maximum rows per memory collection."),
+    task_id: int | None = typer.Option(None, "--task-id", help="Optional related task id."),
 ) -> None:
     """Create a sanitized memory snapshot."""
     def call() -> None:
@@ -1000,6 +1034,7 @@ def snapshot_add(
                 title=title or None,
                 limit=limit,
                 tags={"source": "codex_memory.py"},
+                task_id=task_id,
             )
         _emit(f"Snapshot added id={snapshot.id} type={snapshot.snapshot_type}")
 
@@ -1009,11 +1044,12 @@ def snapshot_add(
 @snapshot_app.command("list")
 def snapshot_list(
     limit: int = typer.Option(10, "--limit", "-n", min=1, help="Maximum rows."),
+    task_id: int | None = typer.Option(None, "--task-id", help="Optional related task id."),
 ) -> None:
     """List memory snapshots."""
     def call() -> None:
         with open_context() as context:
-            snapshots = context.snapshots(limit=limit)
+            snapshots = context.snapshots(limit=limit, task_id=task_id)
         _print_snapshots(snapshots, "Snapshots")
 
     _run_memory_call(call)

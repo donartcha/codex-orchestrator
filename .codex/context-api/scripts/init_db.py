@@ -8,6 +8,7 @@ import _bootstrap  # noqa: F401
 from codex_context.config import ConfigError, load_config
 from codex_context.db import create_db_engine
 from codex_context.models import Base
+from codex_context.schema_migrations import ensure_task_scope_columns
 
 
 console = Console()
@@ -19,6 +20,7 @@ def main() -> None:
         config = load_config()
         engine = create_db_engine(config)
         Base.metadata.create_all(engine)
+        ensure_task_scope_columns(engine)
         console.print(f"[green]Tables are ready[/green] ({config.safe_label})")
     except ConfigError as exc:
         console.print(f"[red]Configuration error:[/red] {exc}")

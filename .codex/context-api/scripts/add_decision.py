@@ -16,10 +16,11 @@ def main(
     title: str = typer.Argument(..., help="Decision title."),
     rationale: str = typer.Argument(..., help="Why this decision was taken."),
     consequences: str = typer.Argument(..., help="Expected consequences."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     try:
         with open_context() as context:
-            decision = context.remember_decision(decision_key, title, rationale, consequences)
+            decision = context.remember_decision(decision_key, title, rationale, consequences, task_id=task_id)
             console.print(f"[green]Decision added[/green] id={decision.id} key={decision.decision_key!r}")
     except ConfigError as exc:
         console.print(f"[red]Configuration error:[/red] {exc}")

@@ -44,8 +44,16 @@ def list_tasks(session: Session, status: str | None, limit: int | None = None) -
     return list(session.scalars(statement))
 
 
-def add_snapshot(session: Session, snapshot_type: str, title: str | None, content: str, tags: dict | list | None) -> ContextSnapshot:
+def add_snapshot(
+    session: Session,
+    snapshot_type: str,
+    title: str | None,
+    content: str,
+    tags: dict | list | None,
+    task_id: int | None = None,
+) -> ContextSnapshot:
     snapshot = ContextSnapshot(
+        task_id=task_id,
         snapshot_type=snapshot_type,
         title=title,
         content=content,
@@ -56,8 +64,10 @@ def add_snapshot(session: Session, snapshot_type: str, title: str | None, conten
     return snapshot
 
 
-def list_snapshots(session: Session, limit: int | None = None) -> list[ContextSnapshot]:
+def list_snapshots(session: Session, limit: int | None = None, task_id: int | None = None) -> list[ContextSnapshot]:
     statement = select(ContextSnapshot).order_by(ContextSnapshot.created_at.desc(), ContextSnapshot.id.desc())
+    if task_id is not None:
+        statement = statement.where(ContextSnapshot.task_id == task_id)
     if limit is not None:
         statement = statement.limit(limit)
     return list(session.scalars(statement))
@@ -248,8 +258,10 @@ def add_decision(
     title: str,
     rationale: str,
     consequences: str,
+    task_id: int | None = None,
 ) -> ArchitecturalDecision:
     decision = ArchitecturalDecision(
+        task_id=task_id,
         decision_key=decision_key,
         title=title,
         rationale=rationale,
@@ -264,10 +276,13 @@ def list_decisions(
     session: Session,
     status: str | None = None,
     limit: int | None = None,
+    task_id: int | None = None,
 ) -> list[ArchitecturalDecision]:
     statement = select(ArchitecturalDecision).order_by(ArchitecturalDecision.created_at.desc(), ArchitecturalDecision.id.desc())
     if status:
         statement = statement.where(ArchitecturalDecision.status == status)
+    if task_id is not None:
+        statement = statement.where(ArchitecturalDecision.task_id == task_id)
     if limit is not None:
         statement = statement.limit(limit)
     return list(session.scalars(statement))
@@ -342,8 +357,10 @@ def add_command_log(
     success_flag: bool,
     error_message: str | None,
     correction_applied: str | None,
+    task_id: int | None = None,
 ) -> CommandHistory:
     command = CommandHistory(
+        task_id=task_id,
         agent_name=agent_name,
         shell_type=shell_type,
         command_text=command_text,
@@ -360,10 +377,13 @@ def list_command_history(
     session: Session,
     limit: int = 20,
     success_flag: bool | None = None,
+    task_id: int | None = None,
 ) -> list[CommandHistory]:
     statement = select(CommandHistory).order_by(CommandHistory.created_at.desc(), CommandHistory.id.desc())
     if success_flag is not None:
         statement = statement.where(CommandHistory.success_flag == success_flag)
+    if task_id is not None:
+        statement = statement.where(CommandHistory.task_id == task_id)
     statement = statement.limit(limit)
     return list(session.scalars(statement))
 
@@ -374,8 +394,10 @@ def add_lesson(
     problem_description: str,
     solution_description: str,
     prevention_strategy: str,
+    task_id: int | None = None,
 ) -> LessonLearned:
     lesson = LessonLearned(
+        task_id=task_id,
         category=category,
         problem_description=problem_description,
         solution_description=solution_description,
@@ -390,10 +412,13 @@ def list_lessons(
     session: Session,
     category: str | None = None,
     limit: int | None = None,
+    task_id: int | None = None,
 ) -> list[LessonLearned]:
     statement = select(LessonLearned).order_by(LessonLearned.created_at.desc(), LessonLearned.id.desc())
     if category:
         statement = statement.where(LessonLearned.category == category)
+    if task_id is not None:
+        statement = statement.where(LessonLearned.task_id == task_id)
     if limit is not None:
         statement = statement.limit(limit)
     return list(session.scalars(statement))

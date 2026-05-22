@@ -23,34 +23,9 @@ Make terminal work safe and self-correcting in PowerShell.
 6. Record failed and corrected commands.
 7. Save reusable lessons.
 
-# Memory usage
+# Memory Policy
 
-Use `.codex/context-api`:
-
-```python
-from codex_context.context import open_context
-```
-
-From terminal, use `python codex_memory.py ...` in `.codex/context-api`.
-
-Backend fallback is transparent. Do not assume MariaDB or SQLite, do not open backend-specific connections, and use `backend-status` only for diagnostics.
-
-Before:
-- retrieve only relevant tasks, decisions, lessons and command history
-
-During:
-- persist important decisions, commands, errors and corrections
-
-After:
-- update task state
-- save reusable lessons
-- create follow-up tasks if needed
-
-Do not:
-- store secrets
-- dump `.env`
-- load irrelevant historical context
-- duplicate records unnecessarily
+Strictly follow memory and execution policies defined in .codex/API.md and .codex/AGENTS.md.
 
 # Approval gates
 

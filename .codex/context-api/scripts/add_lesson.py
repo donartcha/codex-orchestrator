@@ -16,6 +16,7 @@ def main(
     problem_description: str = typer.Argument(..., help="Problem description."),
     solution_description: str = typer.Argument(..., help="Solution description."),
     prevention_strategy: str = typer.Argument(..., help="How to prevent recurrence."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     try:
         with open_context() as context:
@@ -24,6 +25,7 @@ def main(
                 problem_description=problem_description,
                 solution_description=solution_description,
                 prevention_strategy=prevention_strategy,
+                task_id=task_id,
             )
             console.print(f"[green]Lesson added[/green] id={lesson.id} category={lesson.category!r}")
     except ConfigError as exc:

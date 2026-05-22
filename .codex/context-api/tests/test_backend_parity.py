@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from sqlalchemy import create_engine, inspect, text
+
 from codex_context.backends import FileBackend, SQLiteBackend, validate_backend_contract
+from codex_context.schema_migrations import TASK_SCOPE_TABLES, ensure_task_scope_columns
 
 
 def _payload(rows: list[object], *fields: str) -> list[tuple[object, ...]]:
@@ -43,6 +46,26 @@ class BackendParityTests(unittest.TestCase):
 
         self.assertEqual(sqlite_snapshot, file_snapshot)
 
+    def test_sqlite_task_scope_migration_adds_missing_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine = create_engine(f"sqlite:///{Path(temp_dir) / 'legacy.sqlite3'}", future=True)
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("CREATE TABLE tasks (id INTEGER PRIMARY KEY)"))
+                    connection.execute(text("CREATE TABLE context_snapshots (id INTEGER PRIMARY KEY)"))
+                    connection.execute(text("CREATE TABLE architectural_decisions (id INTEGER PRIMARY KEY)"))
+                    connection.execute(text("CREATE TABLE command_history (id INTEGER PRIMARY KEY)"))
+                    connection.execute(text("CREATE TABLE lessons_learned (id INTEGER PRIMARY KEY)"))
+
+                ensure_task_scope_columns(engine)
+
+                inspector = inspect(engine)
+                for table_name in TASK_SCOPE_TABLES:
+                    column_names = {column["name"] for column in inspector.get_columns(table_name)}
+                    self.assertIn("task_id", column_names)
+            finally:
+                engine.dispose()
+
     def _exercise_backend(self, backend) -> dict[str, object]:
         first_task = backend.remember_task(
             "Investigate contract",
@@ -67,10 +90,12 @@ class BackendParityTests(unittest.TestCase):
             "exec-0001",
             [{"kind": "overlapping_write_scope", "task_ids": ["root-exec-0001", "phase-exec-0001-001"], "detail": "same file"}],
         )
-        backend.remember_decision("backend-contract", "Use shared contract", "Normalize public methods.", "Backends stay swappable.")
-        backend.remember_command("testing-agent", "powershell", "pytest tests\\test_backend_parity.py -v", True)
+        backend.remember_decision("backend-contract", "Use shared contract", "Normalize public methods.", "Backends stay swappable.", task_id=second_task.id)
+        backend.remember_decision("global-contract", "Allow global memory", "Some memory is not task-specific.", "Task scope remains optional.")
+        backend.remember_command("testing-agent", "powershell", "pytest tests\\test_backend_parity.py -v", True, task_id=second_task.id)
         backend.remember_command("testing-agent", "powershell", "pytest missing", False, "No such file", "Run focused test path.")
-        backend.remember_lesson("testing", "Backend parity can drift.", "Use shared tests.", "Run parity tests per backend change.")
+        backend.remember_lesson("testing", "Backend parity can drift.", "Use shared tests.", "Run parity tests per backend change.", task_id=second_task.id)
+        backend.remember_lesson("testing", "Global lessons still exist.", "Store without task id.", "Only pass task id when useful.")
 
         return {
             "pending_tasks": _payload(backend.tasks("pending", limit=10), "title", "priority", "assigned_agent", "status"),
@@ -104,9 +129,12 @@ class BackendParityTests(unittest.TestCase):
                 backend.orchestration_validation("root-exec-0001")["task_id"],
                 backend.orchestration_validation("root-exec-0001")["success"],
             ),
-            "decisions": _payload(backend.decisions(status="active", limit=10), "decision_key", "title", "status"),
+            "decisions": _payload(backend.decisions(status="active", limit=10), "decision_key", "title", "status", "task_id"),
+            "task_decisions": _payload(backend.decisions(status="active", limit=10, task_id=second_task.id), "decision_key", "task_id"),
             "failed_commands": _payload(backend.commands(limit=10, success_flag=False), "agent_name", "shell_type", "success_flag", "error_message"),
-            "lessons": _payload(backend.lessons(category="testing", limit=10), "category", "problem_description", "solution_description"),
+            "task_commands": _payload(backend.commands(limit=10, task_id=second_task.id), "agent_name", "task_id"),
+            "lessons": _payload(backend.lessons(category="testing", limit=10), "category", "problem_description", "solution_description", "task_id"),
+            "task_lessons": _payload(backend.lessons(category="testing", limit=10, task_id=second_task.id), "problem_description", "task_id"),
             "missing_task_update": backend.set_task_status(999999, "done") is None,
         }
 

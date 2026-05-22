@@ -14,13 +14,15 @@ console = Console()
 
 def main(
     limit: int = typer.Option(20, "--limit", "-n", help="Maximum number of command rows."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
 ) -> None:
     try:
         with open_context() as context:
-            commands = context.commands(limit)
+            commands = context.commands(limit, task_id=task_id)
 
         table = Table(title="Command history")
         table.add_column("ID", justify="right")
+        table.add_column("Task")
         table.add_column("Agent")
         table.add_column("Shell")
         table.add_column("OK")
@@ -30,6 +32,7 @@ def main(
         for command in commands:
             table.add_row(
                 str(command.id),
+                str(command.task_id or ""),
                 command.agent_name or "",
                 command.shell_type or "",
                 str(bool(command.success_flag)),

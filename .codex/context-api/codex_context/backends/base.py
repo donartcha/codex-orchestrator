@@ -42,9 +42,10 @@ class ContextBackend(Protocol):
         title: str | None,
         content: str,
         tags: dict | list | None,
+        task_id: int | None = None,
     ) -> ContextSnapshot: ...
 
-    def snapshots(self, limit: int | None = None) -> list[ContextSnapshot]: ...
+    def snapshots(self, limit: int | None = None, task_id: int | None = None) -> list[ContextSnapshot]: ...
 
     def remember_task_log(self, task_id: int, content: str, agent_name: str | None, log_type: str) -> TaskLog: ...
 
@@ -108,9 +109,15 @@ class ContextBackend(Protocol):
         title: str,
         rationale: str,
         consequences: str,
+        task_id: int | None = None,
     ) -> ArchitecturalDecision: ...
 
-    def decisions(self, status: str | None = None, limit: int | None = None) -> list[ArchitecturalDecision]: ...
+    def decisions(
+        self,
+        status: str | None = None,
+        limit: int | None = None,
+        task_id: int | None = None,
+    ) -> list[ArchitecturalDecision]: ...
 
     def supersede_decision(self, old_id: int, new_id: int) -> ArchitecturalDecision | None: ...
 
@@ -122,9 +129,15 @@ class ContextBackend(Protocol):
         success_flag: bool,
         error_message: str | None = None,
         correction_applied: str | None = None,
+        task_id: int | None = None,
     ) -> CommandHistory: ...
 
-    def commands(self, limit: int = 20, success_flag: bool | None = None) -> list[CommandHistory]: ...
+    def commands(
+        self,
+        limit: int = 20,
+        success_flag: bool | None = None,
+        task_id: int | None = None,
+    ) -> list[CommandHistory]: ...
 
     def remember_lesson(
         self,
@@ -132,6 +145,12 @@ class ContextBackend(Protocol):
         problem_description: str,
         solution_description: str,
         prevention_strategy: str,
+        task_id: int | None = None,
     ) -> LessonLearned: ...
 
-    def lessons(self, category: str | None = None, limit: int | None = None) -> list[LessonLearned]: ...
+    def lessons(
+        self,
+        category: str | None = None,
+        limit: int | None = None,
+        task_id: int | None = None,
+    ) -> list[LessonLearned]: ...

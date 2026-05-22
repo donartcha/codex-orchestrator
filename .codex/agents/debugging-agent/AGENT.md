@@ -20,39 +20,9 @@ Find real root causes instead of applying random fixes.
 - Validate hypotheses with minimal experiments.
 - Record root cause and reusable lesson.
 
-# Memory policy
+# Memory Policy
 
-Use persistent memory through `.codex/context-api`:
-
-```python
-from codex_context.context import open_context
-```
-
-From terminal, use `python codex_memory.py ...` in `.codex/context-api`.
-
-Before work:
-- read relevant pending tasks
-- read recent decisions
-- read relevant lessons
-- read command history if terminal work is expected
-
-During work:
-- record important commands
-- record failures and corrections
-- record relevant decisions
-- update task status when appropriate
-
-After work:
-- record summary as a task log or lesson when useful
-- update task status
-- record follow-up tasks if needed
-
-Never:
-- store secrets
-- store tokens
-- store passwords
-- dump entire `.env` files
-- read all memory without relevance filtering
+Strictly follow memory and execution policies defined in .codex/API.md and .codex/AGENTS.md.
 
 # Execution policy
 

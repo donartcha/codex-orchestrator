@@ -136,10 +136,12 @@ class CodexContext:
         title: str | None = None,
         limit: int = 100,
         tags: dict | list | None = None,
+        task_id: int | None = None,
     ):
         content = serialize_memory_state(self, limit=limit)
         payload = self._sanitize_write(
             {
+                "task_id": task_id,
                 "snapshot_type": snapshot_type,
                 "title": title,
                 "content": content,
@@ -151,10 +153,11 @@ class CodexContext:
             payload["title"],
             payload["content"],
             payload["tags"],
+            payload["task_id"],
         )
 
-    def snapshots(self, limit: int | None = None):
-        return self.backend.snapshots(limit)
+    def snapshots(self, limit: int | None = None, task_id: int | None = None):
+        return self.backend.snapshots(limit, task_id)
 
     def remember_task_log(
         self,
@@ -296,9 +299,11 @@ class CodexContext:
         title: str,
         rationale: str,
         consequences: str,
+        task_id: int | None = None,
     ) -> ArchitecturalDecision:
         payload = self._sanitize_write(
             {
+                "task_id": task_id,
                 "decision_key": decision_key,
                 "title": title,
                 "rationale": rationale,
@@ -310,14 +315,16 @@ class CodexContext:
             payload["title"],
             payload["rationale"],
             payload["consequences"],
+            payload["task_id"],
         )
 
     def decisions(
         self,
         status: str | None = None,
         limit: int | None = None,
+        task_id: int | None = None,
     ) -> list[ArchitecturalDecision]:
-        return self.backend.decisions(status, limit)
+        return self.backend.decisions(status, limit, task_id)
 
     def supersede_decision(self, old_id: int, new_id: int) -> ArchitecturalDecision | None:
         return self.backend.supersede_decision(old_id, new_id)
@@ -336,9 +343,11 @@ class CodexContext:
         success_flag: bool,
         error_message: str | None = None,
         correction_applied: str | None = None,
+        task_id: int | None = None,
     ) -> CommandHistory:
         payload = self._sanitize_write(
             {
+                "task_id": task_id,
                 "agent_name": agent_name,
                 "shell_type": shell_type,
                 "command_text": command_text,
@@ -353,10 +362,16 @@ class CodexContext:
             success_flag,
             payload["error_message"],
             payload["correction_applied"],
+            payload["task_id"],
         )
 
-    def commands(self, limit: int = 20, success_flag: bool | None = None) -> list[CommandHistory]:
-        return self.backend.commands(limit, success_flag)
+    def commands(
+        self,
+        limit: int = 20,
+        success_flag: bool | None = None,
+        task_id: int | None = None,
+    ) -> list[CommandHistory]:
+        return self.backend.commands(limit, success_flag, task_id)
 
     def remember_lesson(
         self,
@@ -364,9 +379,11 @@ class CodexContext:
         problem_description: str,
         solution_description: str,
         prevention_strategy: str,
+        task_id: int | None = None,
     ) -> LessonLearned:
         payload = self._sanitize_write(
             {
+                "task_id": task_id,
                 "category": category,
                 "problem_description": problem_description,
                 "solution_description": solution_description,
@@ -378,10 +395,16 @@ class CodexContext:
             payload["problem_description"],
             payload["solution_description"],
             payload["prevention_strategy"],
+            payload["task_id"],
         )
 
-    def lessons(self, category: str | None = None, limit: int | None = None) -> list[LessonLearned]:
-        return self.backend.lessons(category, limit)
+    def lessons(
+        self,
+        category: str | None = None,
+        limit: int | None = None,
+        task_id: int | None = None,
+    ) -> list[LessonLearned]:
+        return self.backend.lessons(category, limit, task_id)
 
     def remember_recovery_lesson(
         self,
@@ -389,9 +412,10 @@ class CodexContext:
         problem_description: str,
         solution_description: str,
         prevention_strategy: str,
+        task_id: int | None = None,
     ) -> LessonLearned | None:
         """Record a reusable lesson if an equivalent recent lesson is absent."""
-        existing_lessons = self.lessons(category=category, limit=50)
+        existing_lessons = self.lessons(category=category, limit=50, task_id=task_id)
         for lesson in existing_lessons:
             if (
                 lesson.problem_description == problem_description
@@ -403,6 +427,7 @@ class CodexContext:
             problem_description=problem_description,
             solution_description=solution_description,
             prevention_strategy=prevention_strategy,
+            task_id=task_id,
         )
 
     def failed_commands(self, limit: int = 20) -> list[CommandHistory]:

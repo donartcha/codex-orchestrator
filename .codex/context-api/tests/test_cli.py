@@ -56,6 +56,76 @@ def test_task_add_and_list_use_isolated_file_fallback(cli_command, context_api_r
 
 
 @pytest.mark.cli
+def test_task_scoped_memory_cli_filters_lessons(cli_command, context_api_root, isolated_context_env) -> None:
+    isolated_context_env["CODEX_CONTEXT_DISABLE_MARIADB"] = "1"
+    isolated_context_env["CODEX_CONTEXT_DISABLE_SQLITE"] = "1"
+
+    add_task_result = _run_cli(
+        cli_command,
+        context_api_root,
+        isolated_context_env,
+        "task",
+        "add",
+        "--title",
+        "Scoped memory",
+        "--description",
+        "Associate lessons to this task.",
+    )
+    assert add_task_result.returncode == 0, add_task_result.stderr
+    task_id = add_task_result.stdout.split("id=", 1)[1].split(" ", 1)[0]
+    task_lesson_result = _run_cli(
+        cli_command,
+        context_api_root,
+        isolated_context_env,
+        "lesson",
+        "add",
+        "--category",
+        "testing",
+        "--problem",
+        "Task-specific lesson",
+        "--solution",
+        "Filter by task id.",
+        "--prevention",
+        "Pass --task-id when recording scoped memory.",
+        "--task-id",
+        task_id,
+    )
+    global_lesson_result = _run_cli(
+        cli_command,
+        context_api_root,
+        isolated_context_env,
+        "lesson",
+        "add",
+        "--category",
+        "testing",
+        "--problem",
+        "Global lesson",
+        "--solution",
+        "Leave task id empty.",
+        "--prevention",
+        "Only scope when needed.",
+    )
+    list_result = _run_cli(
+        cli_command,
+        context_api_root,
+        isolated_context_env,
+        "lesson",
+        "list",
+        "--category",
+        "testing",
+        "--task-id",
+        task_id,
+    )
+
+    assert task_lesson_result.returncode == 0, task_lesson_result.stderr
+    assert global_lesson_result.returncode == 0, global_lesson_result.stderr
+    assert list_result.returncode == 0, list_result.stderr
+    assert "Task-specific lesson" in list_result.stdout
+    assert "Global lesson" not in list_result.stdout
+    assert f"task={task_id}" in list_result.stdout
+
+
+@pytest.mark.cli
 def test_task_list_zero_filter_mentions_other_statuses(cli_command, context_api_root, isolated_context_env) -> None:
     isolated_context_env["CODEX_CONTEXT_DISABLE_MARIADB"] = "1"
     isolated_context_env["CODEX_CONTEXT_DISABLE_SQLITE"] = "1"

@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from ..models import Base
+from ..schema_migrations import ensure_task_scope_columns
 from .base import BackendStatus
 from .mariadb_backend import MariaDBBackend
 
@@ -25,6 +26,7 @@ class SQLiteBackend(MariaDBBackend):
         with self.engine.begin() as connection:
             connection.execute(text("SELECT 1"))
             Base.metadata.create_all(connection)
+        ensure_task_scope_columns(self.engine)
         self.path = sqlite_path
         self.status = BackendStatus(
             name=self.name,

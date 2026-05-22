@@ -57,7 +57,7 @@ Initialize tables only when needed:
 python scripts/init_db.py
 ```
 
-`init_db.py` creates tables if they do not exist. It does not run destructive migrations.
+`init_db.py` creates tables if they do not exist and applies lightweight idempotent schema updates such as optional task-scope columns. It does not run destructive migrations.
 
 ## Official CLI
 
@@ -71,6 +71,8 @@ python codex_memory.py env-status
 python codex_memory.py backend-status
 python codex_memory.py bootstrap --mode new-task --title "Add CI workflow"
 python codex_memory.py finish --task-id 1 --summary "Summary of completed work" --status done
+python codex_memory.py lesson add --category "powershell" --problem "What failed" --solution "What fixed it" --prevention "How to avoid it next time"
+python codex_memory.py lesson list --limit 10
 python codex_memory.py status
 python codex_memory.py task list --status all
 python codex_memory.py task summary
@@ -266,6 +268,18 @@ python codex_memory.py task log --task-id 1 --content "Validation completed" --a
 python codex_memory.py task logs --task-id 1 --limit 10
 ```
 
+### Task-Scoped Memory
+
+Decisions, lessons, commands and snapshots can be global or linked to a task with nullable `task_id`. Use `--task-id` only when the record was produced during, or is specifically useful for, one task execution. Leave it empty for global reusable context.
+
+```powershell
+python codex_memory.py lesson add --task-id 1 --category "testing" --problem "Task-specific issue" --solution "Fix applied" --prevention "Check this during similar work"
+python codex_memory.py lesson list --task-id 1 --limit 10
+python codex_memory.py decision list --task-id 1
+python codex_memory.py command list --task-id 1
+python codex_memory.py snapshot list --task-id 1
+```
+
 ### Decisions
 
 Decisions store technical or architectural decisions.
@@ -297,9 +311,9 @@ python codex_memory.py command list --failed-only --limit 10
 
 - `tasks`: work that should be done or has already been done.
 - `task_logs`: what happened in a specific task.
-- `decisions`: technical or architectural decisions.
-- `lessons`: reusable learning that prevents future errors.
-- `commands`: terminal execution history, including errors and corrections.
+- `decisions`: technical or architectural decisions; optionally linked to a task.
+- `lessons`: reusable learning that prevents future errors; optionally linked to a task.
+- `commands`: terminal execution history, including errors and corrections; optionally linked to a task.
 
 ## Recommended Workflow Before Work
 
@@ -314,6 +328,16 @@ python codex_memory.py bootstrap --mode new-task --title "Brief task title"
 ```powershell
 python codex_memory.py finish --task-id 1 --summary "Summary of completed work" --status done
 ```
+
+`finish` writes a task log and can update task status. It does not create a lesson.
+
+When a result should prevent future repeated failures, record it explicitly as a reusable lesson:
+
+```powershell
+python codex_memory.py lesson add --category "powershell" --problem "Bash syntax was used in PowerShell" --solution "Convert the command to native PowerShell" --prevention "Check the active shell before composing commands"
+```
+
+Use lessons for repeatable root causes, recoveries, fallback patterns and workflow constraints. Use task logs for one task's narrative, validation output or handoff notes.
 
 Show overall status:
 
@@ -344,7 +368,16 @@ with open_context() as context:
         shell_type="powershell",
         command_text="python codex_memory.py check",
         success_flag=True,
+        task_id=task.id,
     )
+    context.remember_lesson(
+        category="powershell",
+        problem_description="Bash syntax was used in PowerShell.",
+        solution_description="Convert the command to native PowerShell.",
+        prevention_strategy="Check the active shell before composing commands.",
+        task_id=task.id,
+    )
+    task_lessons = context.lessons(category="powershell", task_id=task.id, limit=5)
     pending = context.tasks(status="pending", limit=5)
 ```
 
@@ -456,3 +489,5 @@ Markers include:
 - `context_embeddings`
 - `agent_memory`
 - `file_index`
+
+`context_snapshots`, `architectural_decisions`, `command_history` and `lessons_learned` include nullable `task_id` columns so records can be global or task-associated. Existing MariaDB and SQLite databases are updated idempotently by `codex_context.schema_migrations.ensure_task_scope_columns()` when `init_db.py` or a SQL backend opens.
