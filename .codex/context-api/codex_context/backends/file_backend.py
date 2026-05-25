@@ -15,6 +15,13 @@ from .base import BackendStatus
 CONTEXT_API_ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE_ROOT = CONTEXT_API_ROOT.parents[1]
 DEFAULT_FILE_PATH = WORKSPACE_ROOT / ".codex" / "context" / "memory-fallback.json"
+DEFAULT_LESSON_CATEGORIES = (
+    ("powershell", "PowerShell"),
+    ("python-environment", "Python Environment"),
+    ("memory-backend", "Memory Backend"),
+    ("validation", "Validation"),
+    ("testing", "Testing"),
+)
 
 COLLECTIONS = {
     "snapshots": ContextSnapshot,
@@ -27,6 +34,7 @@ COLLECTIONS = {
     "decisions": ArchitecturalDecision,
     "commands": CommandHistory,
     "lessons": LessonLearned,
+    "lesson_categories": dict,
 }
 
 
@@ -38,6 +46,7 @@ class FileBackend:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
             self._write(self._empty_store())
+        self._ensure_default_categories()
         self._read()
         self.status = BackendStatus(
             name=self.name,
@@ -332,11 +341,15 @@ class FileBackend:
         return self._limit(rows, limit)
 
     def remember_lesson(self, category, problem_description, solution_description, prevention_strategy, task_id=None):
+        category_row = next((row for row in self._read()["lesson_categories"] if row.get("key_name") == str(category).strip().lower()), None)
+        if category_row is None:
+            raise ValueError(f"Unknown lesson category: {category}")
         return self._append(
             "lessons",
             {
                 "task_id": task_id,
-                "category": category,
+                "category": str(category).strip().lower(),
+                "category_id": category_row.get("id"),
                 "problem_description": problem_description,
                 "solution_description": solution_description,
                 "prevention_strategy": prevention_strategy,
@@ -350,9 +363,50 @@ class FileBackend:
         if task_id is not None:
             rows = [row for row in rows if str(getattr(row, "task_id", "")) == str(task_id)]
         return self._limit(rows, limit)
+    def remember_lesson_category(self, key_name, title, description=None, parent_key=None):
+        normalized = str(key_name).strip().lower().replace(" ", "-")
+        store = self._read()
+        if any(row.get("key_name") == normalized for row in store["lesson_categories"]):
+            raise ValueError("Category already exists")
+        parent_id = None
+        if parent_key:
+            parent = next((row for row in store["lesson_categories"] if row.get("key_name") == str(parent_key).strip().lower()), None)
+            parent_id = parent.get("id") if parent else None
+        return self._append("lesson_categories", {"key_name": normalized, "title": title, "description": description, "parent_id": parent_id, "status": "active"})
+    def lesson_categories(self, status="active", limit=100):
+        rows = list(reversed(self._read()["lesson_categories"]))
+        if status:
+            rows = [row for row in rows if row.get("status") == status]
+        return self._limit(rows, limit)
+    def find_lesson_categories(self, query, limit=10):
+        words = [token.strip().lower() for token in str(query).split() if token.strip()]
+        rows = self.lesson_categories(status=None, limit=None)
+        matched = [
+            row
+            for row in rows
+            if any(
+                token in f"{row.get('key_name', '')} {row.get('title', '')} {row.get('description', '')}".lower()
+                for token in words
+            )
+        ]
+        return matched[:limit]
 
     def _empty_store(self) -> dict[str, list[dict[str, object]]]:
         return {name: [] for name in COLLECTIONS}
+
+    def _ensure_default_categories(self) -> None:
+        store = self._read()
+        existing = {str(row.get("key_name")) for row in store.get("lesson_categories", [])}
+        now = self._now()
+        next_id = max([int(row.get("id", 0)) for row in store.get("lesson_categories", [])] or [0]) + 1
+        for key_name, title in DEFAULT_LESSON_CATEGORIES:
+            if key_name in existing:
+                continue
+            store["lesson_categories"].append(
+                {"id": next_id, "key_name": key_name, "title": title, "description": None, "status": "active", "created_at": now, "updated_at": now}
+            )
+            next_id += 1
+        self._write(store)
 
     def _read(self) -> dict[str, list[dict[str, object]]]:
         try:

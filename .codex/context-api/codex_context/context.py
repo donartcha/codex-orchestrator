@@ -12,6 +12,7 @@ from .backends import BackendStatus, ContextBackend, MariaDBBackend
 from .fallback import select_backend
 from .memory_lifecycle import compact_memory, detect_contradictions, serialize_memory_state
 from .models import ArchitecturalDecision, CommandHistory, LessonLearned, Task, TaskLog
+from .lesson_taxonomy import suggest_categories
 from .sanitizer import SanitizationReport, sanitize_memory
 
 if TYPE_CHECKING:
@@ -405,7 +406,13 @@ class CodexContext:
         solution_description: str,
         prevention_strategy: str,
         task_id: int | None = None,
+        create_category: bool = False,
     ) -> LessonLearned:
+        if create_category:
+            try:
+                self.backend.remember_lesson_category(category, category.replace("-", " ").title())
+            except ValueError:
+                pass
         payload = self._sanitize_write(
             {
                 "task_id": task_id,
@@ -430,6 +437,15 @@ class CodexContext:
         task_id: int | None = None,
     ) -> list[LessonLearned]:
         return self.backend.lessons(category, limit, task_id)
+    def remember_lesson_category(self, key_name: str, title: str, description: str | None = None, parent_key: str | None = None):
+        return self.backend.remember_lesson_category(key_name, title, description, parent_key)
+    def lesson_categories(self, status: str | None = "active", limit: int | None = 100):
+        return self.backend.lesson_categories(status, limit)
+    def find_lesson_categories(self, query: str, limit: int = 10):
+        return self.backend.find_lesson_categories(query, limit)
+    def suggest_lesson_category(self, problem: str, solution: str | None = None, limit: int = 5):
+        source = f"{problem} {solution or ''}".strip()
+        return suggest_categories(source, limit=limit)
 
     def remember_recovery_lesson(
         self,

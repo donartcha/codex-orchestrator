@@ -10,6 +10,7 @@ from .models import (
     CommandHistory,
     ContextSnapshot,
     LessonLearned,
+    LessonCategory,
     OrchestrationConflict,
     OrchestrationExecution,
     OrchestrationTask,
@@ -501,6 +502,7 @@ def add_lesson(
     solution_description: str,
     prevention_strategy: str,
     task_id: int | None = None,
+    category_id: int | None = None,
 ) -> LessonLearned:
     lesson = LessonLearned(
         task_id=task_id,
@@ -508,10 +510,64 @@ def add_lesson(
         problem_description=problem_description,
         solution_description=solution_description,
         prevention_strategy=prevention_strategy,
+        category_id=category_id,
     )
     session.add(lesson)
     session.flush()
     return lesson
+
+
+def create_lesson_category(
+    session: Session,
+    key_name: str,
+    title: str,
+    description: str | None = None,
+    parent_id: int | None = None,
+    status: str = "active",
+) -> LessonCategory:
+    normalized = _normalize_category_key(key_name)
+    existing = get_lesson_category_by_key(session, normalized)
+    if existing is not None:
+        raise ValueError("Category already exists")
+    row = LessonCategory(
+        key_name=normalized,
+        title=title,
+        description=description,
+        parent_id=parent_id,
+        status=status,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def list_lesson_categories(session: Session, status: str | None = "active", limit: int | None = 100) -> list[LessonCategory]:
+    statement = select(LessonCategory).order_by(LessonCategory.key_name.asc())
+    if status:
+        statement = statement.where(LessonCategory.status == status)
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(session.scalars(statement))
+
+
+def get_lesson_category_by_key(session: Session, key_name: str) -> LessonCategory | None:
+    normalized = _normalize_category_key(key_name)
+    statement = select(LessonCategory).where(LessonCategory.key_name == normalized)
+    return session.scalar(statement)
+
+
+def find_lesson_categories(session: Session, query: str, limit: int = 10) -> list[LessonCategory]:
+    words = [token.strip().lower() for token in query.split() if token.strip()]
+    rows = list_lesson_categories(session, status=None, limit=None)
+    matched = [row for row in rows if any(token in f"{row.key_name} {row.title} {row.description or ''}".lower() for token in words)]
+    return matched[:limit]
+
+
+def _normalize_category_key(key_name: str) -> str:
+    normalized = key_name.strip().lower().replace(" ", "-")
+    if not normalized or " " in normalized:
+        raise ValueError("Category key must be lowercase and without spaces")
+    return normalized
 
 
 def list_lessons(

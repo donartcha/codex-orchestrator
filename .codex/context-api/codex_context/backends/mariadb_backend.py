@@ -12,6 +12,9 @@ from ..repositories import (
     add_command_log,
     add_decision,
     add_lesson,
+    create_lesson_category,
+    find_lesson_categories,
+    get_lesson_category_by_key,
     add_snapshot,
     add_task,
     list_task_children,
@@ -26,6 +29,7 @@ from ..repositories import (
     list_command_history,
     list_decisions,
     list_lessons,
+    list_lesson_categories,
     list_orchestration_executions,
     list_orchestration_tasks,
     list_snapshots,
@@ -172,8 +176,24 @@ class MariaDBBackend:
 
     def remember_lesson(self, category, problem_description, solution_description, prevention_strategy, task_id=None):
         with self.session() as session:
-            return add_lesson(session, category, problem_description, solution_description, prevention_strategy, task_id)
+            cat = get_lesson_category_by_key(session, category)
+            if cat is None:
+                raise ValueError(f"Unknown lesson category: {category}")
+            return add_lesson(session, cat.key_name, problem_description, solution_description, prevention_strategy, task_id, category_id=cat.id)
 
     def lessons(self, category=None, limit=None, task_id=None):
         with self.session() as session:
             return list_lessons(session, category, limit, task_id)
+    def remember_lesson_category(self, key_name, title, description=None, parent_key=None):
+        with self.session() as session:
+            parent_id = None
+            if parent_key:
+                parent = get_lesson_category_by_key(session, parent_key)
+                parent_id = parent.id if parent else None
+            return create_lesson_category(session, key_name, title, description, parent_id=parent_id)
+    def lesson_categories(self, status="active", limit=100):
+        with self.session() as session:
+            return list_lesson_categories(session, status, limit)
+    def find_lesson_categories(self, query, limit=10):
+        with self.session() as session:
+            return find_lesson_categories(session, query, limit)

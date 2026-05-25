@@ -99,6 +99,7 @@ app = typer.Typer(help="Official Codex persistent memory CLI.")
 task_app = typer.Typer(help="Manage tasks and task logs.")
 decision_app = typer.Typer(help="Manage architectural and technical decisions.")
 lesson_app = typer.Typer(help="Manage reusable lessons.")
+lesson_category_app = typer.Typer(help="Manage lesson category catalog.")
 command_app = typer.Typer(help="Manage command history.")
 snapshot_app = typer.Typer(help="Manage memory snapshots.")
 memory_app = typer.Typer(help="Inspect memory lifecycle reports.")
@@ -109,6 +110,7 @@ plan_app = typer.Typer(help="Manage persistent planning as parent tasks and orde
 app.add_typer(task_app, name="task")
 app.add_typer(decision_app, name="decision")
 app.add_typer(lesson_app, name="lesson")
+app.add_typer(lesson_category_app, name="lesson-category")
 app.add_typer(command_app, name="command")
 app.add_typer(snapshot_app, name="snapshot")
 app.add_typer(memory_app, name="memory")
@@ -650,6 +652,13 @@ def bootstrap(
                 return
 
             if normalized_mode == "debugging":
+                suggested_keys: list[str] = []
+                if relevance_query.strip():
+                    suggestions = context.suggest_lesson_category(relevance_query, None, limit=5)
+                    _section("Suggested lesson categories")
+                    for suggestion in suggestions:
+                        suggested_keys.append(suggestion.key_name)
+                        _emit(f"- {suggestion.key_name}")
                 decisions = _filter_rows(context.decisions("active", limit=50), query=relevance_query, tags=tags)
                 failed_commands = _filter_rows(
                     context.commands(limit=100, success_flag=False),
@@ -665,6 +674,12 @@ def bootstrap(
                     tags=tags,
                     category=effective_category,
                 )
+                for key in suggested_keys:
+                    lessons.extend(context.lessons(key, limit=20))
+                dedup_lessons: dict[int, Any] = {}
+                for lesson in lessons:
+                    dedup_lessons[int(getattr(lesson, "id", 0) or 0)] = lesson
+                lessons = list(dedup_lessons.values())
                 _print_commands(_limited(failed_commands, limit), "Matching failed commands")
                 _print_lessons(_limited(lessons, limit), "Matching lessons")
                 _print_decisions(_limited(decisions, limit), "Relevant decisions")
@@ -982,13 +997,78 @@ def lesson_add(
     solution: str = typer.Option(..., "--solution", help="Solution description."),
     prevention: str = typer.Option(..., "--prevention", help="Prevention strategy."),
     task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
+    create_category: bool = typer.Option(False, "--create-category", help="Create the category if missing."),
+    category_title: str = typer.Option("", "--category-title", help="Title for new category."),
+    category_description: str = typer.Option("", "--category-description", help="Description for new category."),
 ) -> None:
     """Add a reusable lesson."""
     def call() -> None:
         with open_context() as context:
+            if create_category:
+                try:
+                    context.remember_lesson_category(category, category_title or category.replace("-", " ").title(), category_description or None)
+                except ValueError:
+                    pass
             lesson = context.remember_lesson(category, problem, solution, prevention, task_id=task_id)
         _emit(f"Lesson added id={lesson.id} category={lesson.category!r}")
 
+    _run_memory_call(call)
+
+
+@lesson_category_app.command("list")
+def lesson_category_list(
+    status: str = typer.Option("active", "--status"),
+    limit: int = typer.Option(50, "--limit"),
+) -> None:
+    def call() -> None:
+        with open_context() as context:
+            rows = context.lesson_categories(status=status, limit=limit)
+        _section("Lesson categories")
+        for row in rows:
+            if isinstance(row, dict):
+                _emit(f"- {row.get('key_name')}: {row.get('title')}")
+            else:
+                _emit(f"- {row.key_name}: {row.title}")
+        _emit(f"{len(rows)} lesson categor(ies).")
+    _run_memory_call(call)
+
+
+@lesson_category_app.command("add")
+def lesson_category_add(
+    key: str = typer.Option(..., "--key"),
+    title: str = typer.Option(..., "--title"),
+    description: str = typer.Option("", "--description"),
+) -> None:
+    def call() -> None:
+        with open_context() as context:
+            row = context.remember_lesson_category(key, title, description or None)
+        _emit(f"Category added key={row.key_name if hasattr(row, 'key_name') else row.get('key_name')}")
+    _run_memory_call(call)
+
+
+@lesson_category_app.command("search")
+def lesson_category_search(query: str = typer.Option(..., "--query"), limit: int = typer.Option(10, "--limit")) -> None:
+    def call() -> None:
+        with open_context() as context:
+            rows = context.find_lesson_categories(query, limit=limit)
+        _section("Matching lesson categories")
+        for row in rows:
+            if isinstance(row, dict):
+                _emit(f"- {row.get('key_name')}: {row.get('title')}")
+            else:
+                _emit(f"- {row.key_name}: {row.title}")
+    _run_memory_call(call)
+
+
+@lesson_category_app.command("suggest")
+def lesson_category_suggest(problem: str = typer.Option(..., "--problem"), solution: str = typer.Option("", "--solution")) -> None:
+    def call() -> None:
+        with open_context() as context:
+            rows = context.suggest_lesson_category(problem, solution or None, limit=5)
+        _section("Suggested lesson categories")
+        for idx, row in enumerate(rows, start=1):
+            _emit(f"{idx}. {row.key_name}")
+            _emit(f"   reason: {row.reason}")
     _run_memory_call(call)
 
 

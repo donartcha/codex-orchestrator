@@ -166,10 +166,30 @@ class LessonLearned(CreatedAtMixin, Base):
         ForeignKey("tasks.id", ondelete="SET NULL"),
         nullable=True,
     )
+    category_id: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("lesson_categories.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     problem_description: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
     solution_description: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
     prevention_strategy: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+
+
+class LessonCategory(TimestampMixin, Base):
+    __tablename__ = "lesson_categories"
+
+    id: Mapped[int] = mapped_column(ID_TYPE, primary_key=True, autoincrement=True)
+    key_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(
+        ID_TYPE,
+        ForeignKey("lesson_categories.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), server_default="active", nullable=False)
 
 
 class ProjectConstraint(TimestampMixin, Base):
