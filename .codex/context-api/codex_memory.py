@@ -98,6 +98,7 @@ from runtime_validation import validate_runtime
 app = typer.Typer(help="Official Codex persistent memory CLI.")
 task_app = typer.Typer(help="Manage tasks and task logs.")
 decision_app = typer.Typer(help="Manage architectural and technical decisions.")
+decisions_app = typer.Typer(help="Decision workflows: list, show, search, export, pending.")
 lesson_app = typer.Typer(help="Manage reusable lessons.")
 command_app = typer.Typer(help="Manage command history.")
 snapshot_app = typer.Typer(help="Manage memory snapshots.")
@@ -108,6 +109,7 @@ plan_app = typer.Typer(help="Manage persistent planning as parent tasks and orde
 
 app.add_typer(task_app, name="task")
 app.add_typer(decision_app, name="decision")
+app.add_typer(decisions_app, name="decisions")
 app.add_typer(lesson_app, name="lesson")
 app.add_typer(command_app, name="command")
 app.add_typer(snapshot_app, name="snapshot")
@@ -401,6 +403,59 @@ def _print_decisions(decisions, title: str) -> None:
             f"{_clip(decision.title, 80)}{task_suffix} ({decision.created_at})"
         )
     _emit(f"{len(decisions)} decision(s).")
+
+
+def _find_decision(decisions: list[Any], selector: str) -> Any | None:
+    key = selector.strip()
+    if not key:
+        return None
+    if key.isdigit():
+        target_id = int(key)
+        for decision in decisions:
+            if int(getattr(decision, "id", 0) or 0) == target_id:
+                return decision
+    lowered = key.lower()
+    for decision in decisions:
+        if str(getattr(decision, "decision_key", "") or "").lower() == lowered:
+            return decision
+    return None
+
+
+def _decision_markdown(decision: Any) -> str:
+    parts = [
+        f"# Decision {getattr(decision, 'id', '')}: {getattr(decision, 'title', '')}",
+        "",
+        "## Metadata",
+        f"- key: `{getattr(decision, 'decision_key', '')}`",
+        f"- status: `{getattr(decision, 'status', '')}`",
+        f"- task_id: `{getattr(decision, 'task_id', '')}`",
+        f"- created_at: `{getattr(decision, 'created_at', '')}`",
+        "",
+        "## Context & Rationale",
+        str(getattr(decision, "rationale", "") or ""),
+        "",
+        "## Consequences / Impact",
+        str(getattr(decision, "consequences", "") or ""),
+    ]
+    return "\n".join(parts).strip() + "\n"
+
+
+def _print_plan_details(task: Any, children: list[Any]) -> None:
+    _print_plan_table(task, children)
+    _section("Plan detail")
+    all_rows = [task, *children]
+    for row in sorted(all_rows, key=lambda r: ((getattr(r, "sort_order", None) or 0), getattr(r, "id", 0))):
+        _emit(f"- #{getattr(row, 'id', '')} | order={getattr(row, 'sort_order', '')} | kind={getattr(row, 'task_kind', '')}")
+        _emit(f"  title: {getattr(row, 'title', '')}")
+        _emit(f"  status/priority: {getattr(row, 'status', '')}/{getattr(row, 'priority', '')}")
+        _emit(f"  parent: {getattr(row, 'parent_task_id', '')}")
+        _emit("  description:")
+        desc = str(getattr(row, "description", "") or "").strip()
+        _emit(f"  {desc if desc else '(empty)'}")
+        _emit("  acceptance:")
+        acceptance = str(getattr(row, "acceptance_criteria", "") or "").strip()
+        _emit(f"  {acceptance if acceptance else '(empty)'}")
+        _emit("")
 
 
 def _print_lessons(lessons, title: str) -> None:
@@ -975,6 +1030,94 @@ def decision_supersede(
     _run_memory_call(call)
 
 
+@decisions_app.command("list")
+def decisions_list(
+    limit: int = typer.Option(50, "--limit", "-n", min=1, help="Maximum rows."),
+    status: str = typer.Option("", "--status", "-s", help="Optional decision status."),
+    task_id: int | None = typer.Option(None, "--task-id", "-t", help="Optional related task id."),
+) -> None:
+    """List persisted decisions."""
+    def call() -> None:
+        with open_context() as context:
+            decisions = context.decisions(status or None, limit=limit, task_id=task_id)
+        _print_decisions(decisions, "Decisions")
+    _run_memory_call(call)
+
+
+@decisions_app.command("show")
+def decisions_show(
+    selector: str = typer.Argument(..., help="Decision id or decision_key."),
+) -> None:
+    """Show one decision by numeric id or decision_key."""
+    def call() -> None:
+        with open_context() as context:
+            decisions = context.decisions(limit=None)
+        decision = _find_decision(decisions, selector)
+        if decision is None:
+            _emit(f"Decision not found: {selector}")
+            raise typer.Exit(1)
+        _emit(_decision_markdown(decision))
+    _run_memory_call(call)
+
+
+@decisions_app.command("search")
+def decisions_search(
+    text: str = typer.Argument(..., help="Text to search in key/title/rationale/consequences."),
+    limit: int = typer.Option(50, "--limit", "-n", min=1, help="Maximum rows."),
+    status: str = typer.Option("", "--status", "-s", help="Optional decision status."),
+) -> None:
+    """Search decisions by free text (supports prefixes and partial matches)."""
+    def call() -> None:
+        with open_context() as context:
+            rows = context.decisions(status or None, limit=None)
+        matches = [row for row in rows if text.lower() in _row_text(row).lower()][:limit]
+        _print_decisions(matches, f"Decision search: {text}")
+    _run_memory_call(call)
+
+
+@decisions_app.command("pending")
+def decisions_pending(
+    limit: int = typer.Option(50, "--limit", "-n", min=1, help="Maximum rows."),
+) -> None:
+    """List active/pending decisions for resolution tracking."""
+    def call() -> None:
+        with open_context() as context:
+            rows = context.decisions("active", limit=None)
+        _print_decisions(rows[:limit], "Pending decisions (active)")
+    _run_memory_call(call)
+
+
+@decisions_app.command("export")
+def decisions_export(
+    format_name: str = typer.Option("markdown", "--format", help="Export format."),
+    output: str = typer.Option("", "--output", "-o", help="Optional output file path."),
+    status: str = typer.Option("", "--status", "-s", help="Optional decision status."),
+    text: str = typer.Option("", "--text", help="Optional text filter."),
+    limit: int = typer.Option(200, "--limit", "-n", min=1, help="Maximum exported rows."),
+) -> None:
+    """Export decisions (Markdown supported)."""
+    def call() -> None:
+        if format_name.strip().lower() != "markdown":
+            _emit(f"Unsupported export format: {format_name}. Supported: markdown")
+            raise typer.Exit(2)
+        with open_context() as context:
+            rows = context.decisions(status or None, limit=None)
+        if text.strip():
+            rows = [row for row in rows if text.lower() in _row_text(row).lower()]
+        rows = rows[:limit]
+        chunks = ["# Decisions Export", "", f"Total: {len(rows)}", ""]
+        for row in rows:
+            chunks.append(_decision_markdown(row))
+            chunks.append("")
+        content = "\n".join(chunks).rstrip() + "\n"
+        if output.strip():
+            Path(output).write_text(content, encoding="utf-8")
+            _emit(f"Decisions exported to {output}")
+            return
+        _emit(content)
+    _run_memory_call(call)
+
+
 @lesson_app.command("add")
 def lesson_add(
     category: str = typer.Option(..., "--category", "-c", help="Lesson category."),
@@ -1297,13 +1440,19 @@ def plan_add_step(
 
 
 @plan_app.command("show")
-def plan_show(task_id: int = typer.Option(..., "--task-id")) -> None:
+def plan_show(
+    task_id: int = typer.Option(..., "--task-id"),
+    detail: bool = typer.Option(False, "--detail", help="Include full descriptions and acceptance criteria."),
+) -> None:
     def call() -> None:
         with open_context() as context:
             tree = context.task_tree(task_id)
         if tree is None:
             _emit(f"Plan not found: {task_id}")
             raise typer.Exit(1)
+        if detail:
+            _print_plan_details(tree["task"], tree["children"])
+            return
         _print_plan_table(tree["task"], tree["children"])
     _run_memory_call(call)
 
