@@ -92,6 +92,21 @@ class FacadeTests(unittest.TestCase):
         self.assertEqual(len(report.violations), 2)
         self.assertEqual({violation.name for violation in report.violations}, {"Engine", "create_db_engine"})
 
+    def test_task_planning_facade_methods(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            context = CodexContext(backend=FileBackend(Path(temp_dir) / "memory.json"))
+            plan = context.remember_task("Plan", "Desc", task_kind="plan")
+            step = context.remember_task("Step", "Desc", parent_task_id=plan.id, task_kind="subtask", sort_order=1)
+            children = context.task_children(plan.id)
+            tree = context.task_tree(plan.id)
+            self.assertEqual(children[0].id, step.id)
+            self.assertEqual(tree["task"].id, plan.id)
+            updated = context.update_task(step.id, title="Step 2")
+            self.assertEqual(updated.title, "Step 2")
+            reordered = context.reorder_task(step.id, 3)
+            self.assertEqual(reordered.sort_order, 3)
+            context.close()
+
 
 if __name__ == "__main__":
     unittest.main()

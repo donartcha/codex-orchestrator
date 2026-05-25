@@ -104,6 +104,7 @@ snapshot_app = typer.Typer(help="Manage memory snapshots.")
 memory_app = typer.Typer(help="Inspect memory lifecycle reports.")
 contradictions_app = typer.Typer(help="Inspect memory contradictions.")
 orchestration_app = typer.Typer(help="Manage structured orchestration tasks and execution.")
+plan_app = typer.Typer(help="Manage persistent planning as parent tasks and ordered subtasks.")
 
 app.add_typer(task_app, name="task")
 app.add_typer(decision_app, name="decision")
@@ -113,6 +114,7 @@ app.add_typer(snapshot_app, name="snapshot")
 app.add_typer(memory_app, name="memory")
 app.add_typer(contradictions_app, name="contradictions")
 app.add_typer(orchestration_app, name="orchestrate")
+app.add_typer(plan_app, name="plan")
 
 def _emit(message: object = "") -> None:
     print(str(message), flush=False)
@@ -457,6 +459,35 @@ def _print_snapshots(snapshots, title: str) -> None:
             f"{_clip(snapshot.title, 80)}{task_suffix} ({snapshot.created_at})"
         )
     _emit(f"{len(snapshots)} snapshot(s).")
+
+
+def _depends_label(depends_on: object) -> str:
+    if not depends_on:
+        return "-"
+    if isinstance(depends_on, str):
+        try:
+            loaded = json.loads(depends_on)
+            return ",".join(str(x) for x in loaded) if loaded else "-"
+        except Exception:
+            return depends_on
+    if isinstance(depends_on, (list, tuple)):
+        return ",".join(str(x) for x in depends_on) if depends_on else "-"
+    return str(depends_on)
+
+
+def _print_plan_table(plan_task: Any, steps: list[Any]) -> None:
+    _emit(f"== Plan #{plan_task.id}: {plan_task.title} ==")
+    _emit(f"Status: {plan_task.status}")
+    _emit(f"Priority: {plan_task.priority}")
+    _emit("")
+    _emit("| Ord | ID | Status | Priority | Title | Depends | Acceptance |")
+    _emit("|---:|---:|---|---|---|---|---|")
+    for step in steps:
+        _emit(
+            f"| {getattr(step, 'sort_order', 0)} | {step.id} | {step.status} | {step.priority} | "
+            f"{_clip(step.title, 80)} | {_depends_label(getattr(step, 'depends_on', None))} | "
+            f"{_clip(getattr(step, 'acceptance_criteria', '') or '-', 60)} |"
+        )
 
 
 @app.command()
@@ -1232,6 +1263,102 @@ def orchestrate_finish(
         _emit(f"Pending: {result.pending}/{result.total}")
         _emit(f"Blocked: {result.blocked}/{result.total}")
 
+    _run_memory_call(call)
+
+
+@plan_app.command("create")
+def plan_create(
+    title: str = typer.Option(..., "--title"),
+    description: str = typer.Option(..., "--description"),
+    agent: str = typer.Option("context-manager", "--agent"),
+    priority: str = typer.Option("normal", "--priority"),
+) -> None:
+    def call() -> None:
+        with open_context() as context:
+            task = context.remember_task(title, description, assigned_agent=agent, priority=priority, task_kind="plan")
+        _emit(f"Plan created id={task.id} title={task.title!r}")
+    _run_memory_call(call)
+
+
+@plan_app.command("add-step")
+def plan_add_step(
+    parent_task_id: int = typer.Option(..., "--parent-task-id"),
+    title: str = typer.Option(..., "--title"),
+    description: str = typer.Option(..., "--description"),
+    priority: str = typer.Option("normal", "--priority"),
+    order: int = typer.Option(0, "--order"),
+    acceptance: str = typer.Option("", "--acceptance"),
+) -> None:
+    def call() -> None:
+        with open_context() as context:
+            step = context.remember_task(title, description, priority=priority, parent_task_id=parent_task_id, task_kind="subtask", sort_order=order, acceptance_criteria=acceptance or None)
+        _emit(f"Step added id={step.id} parent={parent_task_id} order={order} title={step.title!r}")
+    _run_memory_call(call)
+
+
+@plan_app.command("show")
+def plan_show(task_id: int = typer.Option(..., "--task-id")) -> None:
+    def call() -> None:
+        with open_context() as context:
+            tree = context.task_tree(task_id)
+        if tree is None:
+            _emit(f"Plan not found: {task_id}")
+            raise typer.Exit(1)
+        _print_plan_table(tree["task"], tree["children"])
+    _run_memory_call(call)
+
+
+@plan_app.command("list")
+def plan_list(status: str = typer.Option("pending", "--status"), limit: int = typer.Option(20, "--limit")) -> None:
+    def call() -> None:
+        with open_context() as context:
+            tasks = [t for t in context.tasks(status, limit=None) if getattr(t, "task_kind", "task") == "plan"][:limit]
+        _print_tasks(tasks, "Plans", status_label=status)
+    _run_memory_call(call)
+
+
+@plan_app.command("update-step")
+def plan_update_step(
+    task_id: int = typer.Option(..., "--task-id"),
+    title: str = typer.Option("", "--title"),
+    description: str = typer.Option("", "--description"),
+    priority: str = typer.Option("", "--priority"),
+    order: int | None = typer.Option(None, "--order"),
+    acceptance: str = typer.Option("", "--acceptance"),
+) -> None:
+    def call() -> None:
+        with open_context() as context:
+            task = context.update_task(task_id, title=title or None, description=description or None, priority=priority or None, sort_order=order, acceptance_criteria=acceptance or None)
+        if task is None:
+            _emit(f"Task not found: {task_id}")
+            raise typer.Exit(1)
+        _emit(f"Step updated id={task.id}")
+    _run_memory_call(call)
+
+
+@plan_app.command("reorder-step")
+def plan_reorder_step(task_id: int = typer.Option(..., "--task-id"), order: int = typer.Option(..., "--order")) -> None:
+    def call() -> None:
+        with open_context() as context:
+            task = context.reorder_task(task_id, order)
+        if task is None:
+            _emit(f"Task not found: {task_id}")
+            raise typer.Exit(1)
+        _emit(f"Step reordered id={task.id} order={order}")
+    _run_memory_call(call)
+
+
+@plan_app.command("depends-on")
+def plan_depends_on(task_id: int = typer.Option(..., "--task-id"), depends_on: int = typer.Option(..., "--depends-on")) -> None:
+    def call() -> None:
+        with open_context() as context:
+            task = context.update_task(task_id, depends_on=[depends_on])
+            if task is not None and getattr(task, "parent_task_id", None):
+                context.recompute_parent_status(int(task.parent_task_id))
+        if task is None:
+            _emit(f"Task not found: {task_id}")
+            raise typer.Exit(1)
+        _emit(f"Dependency updated task={task_id} depends_on={depends_on}")
     _run_memory_call(call)
 
 

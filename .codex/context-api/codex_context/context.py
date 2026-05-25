@@ -108,6 +108,11 @@ class CodexContext:
         description: str,
         assigned_agent: str | None = None,
         priority: str = "normal",
+        parent_task_id: int | None = None,
+        task_kind: str = "task",
+        sort_order: int = 0,
+        depends_on: list[int] | None = None,
+        acceptance_criteria: str | None = None,
     ) -> Task:
         payload = self._sanitize_write(
             {
@@ -115,6 +120,11 @@ class CodexContext:
                 "description": description,
                 "assigned_agent": assigned_agent,
                 "priority": priority,
+                "parent_task_id": parent_task_id,
+                "task_kind": task_kind,
+                "sort_order": sort_order,
+                "depends_on": depends_on,
+                "acceptance_criteria": acceptance_criteria,
             }
         )
         return self.backend.remember_task(
@@ -122,10 +132,25 @@ class CodexContext:
             payload["description"],
             payload["assigned_agent"],
             payload["priority"],
+            payload["parent_task_id"],
+            payload["task_kind"],
+            payload["sort_order"],
+            payload["depends_on"],
+            payload["acceptance_criteria"],
         )
 
     def tasks(self, status: str | None = "pending", limit: int | None = None) -> list[Task]:
         return self.backend.tasks(status, limit)
+    def task_children(self, parent_task_id: int, limit: int | None = None) -> list[Task]:
+        return self.backend.task_children(parent_task_id, limit)
+    def task_tree(self, root_task_id: int) -> dict[str, object] | None:
+        return self.backend.task_tree(root_task_id)
+    def update_task(self, task_id: int, **fields: Any) -> Task | None:
+        return self.backend.update_task(task_id, **fields)
+    def reorder_task(self, task_id: int, sort_order: int) -> Task | None:
+        return self.backend.reorder_task(task_id, sort_order)
+    def recompute_parent_status(self, parent_task_id: int) -> Task | None:
+        return self.backend.recompute_parent_status(parent_task_id)
 
     def set_task_status(self, task_id: int, status: str) -> Task | None:
         return self.backend.set_task_status(task_id, status)

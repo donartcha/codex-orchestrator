@@ -10,6 +10,13 @@ TASK_SCOPE_TABLES = (
     "command_history",
     "lessons_learned",
 )
+TASK_PLANNING_COLUMNS = (
+    "parent_task_id",
+    "task_kind",
+    "sort_order",
+    "depends_on",
+    "acceptance_criteria",
+)
 
 
 def ensure_task_scope_columns(engine: Engine) -> None:
@@ -27,6 +34,25 @@ def ensure_task_scope_columns(engine: Engine) -> None:
             _add_mysql_task_id(engine, table_name)
         elif dialect == "sqlite":
             _add_sqlite_task_id(engine, table_name)
+    _ensure_task_planning_columns(engine, inspector, existing_tables, dialect)
+
+
+def _ensure_task_planning_columns(engine: Engine, inspector, existing_tables: set[str], dialect: str) -> None:
+    if "tasks" not in existing_tables:
+        return
+    column_names = {column["name"] for column in inspector.get_columns("tasks")}
+    with engine.begin() as connection:
+        if "parent_task_id" not in column_names:
+            connection.execute(text("ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER NULL"))
+        if "task_kind" not in column_names:
+            task_kind_type = "VARCHAR(32)" if dialect == "mysql" else "TEXT"
+            connection.execute(text(f"ALTER TABLE tasks ADD COLUMN task_kind {task_kind_type} NOT NULL DEFAULT 'task'"))
+        if "sort_order" not in column_names:
+            connection.execute(text("ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"))
+        if "depends_on" not in column_names:
+            connection.execute(text("ALTER TABLE tasks ADD COLUMN depends_on TEXT NULL"))
+        if "acceptance_criteria" not in column_names:
+            connection.execute(text("ALTER TABLE tasks ADD COLUMN acceptance_criteria TEXT NULL"))
 
 
 def _add_mysql_task_id(engine: Engine, table_name: str) -> None:

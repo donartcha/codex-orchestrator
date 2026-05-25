@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -23,12 +25,26 @@ def add_task(
     description: str,
     assigned_agent: str | None,
     priority: str,
+    parent_task_id: int | None = None,
+    task_kind: str = "task",
+    sort_order: int = 0,
+    depends_on: list[int] | None = None,
+    acceptance_criteria: str | None = None,
 ) -> Task:
+    _validate_task_kind(task_kind)
+    _validate_sort_order(sort_order)
+    _validate_parent_task(session, parent_task_id)
+    serialized_depends = _serialize_depends_on(depends_on)
     task = Task(
         title=title,
         description=description,
         assigned_agent=assigned_agent,
         priority=priority,
+        parent_task_id=parent_task_id,
+        task_kind=task_kind,
+        sort_order=sort_order,
+        depends_on=serialized_depends,
+        acceptance_criteria=acceptance_criteria,
     )
     session.add(task)
     session.flush()
@@ -80,6 +96,96 @@ def update_task_status(session: Session, task_id: int, status: str) -> Task | No
     task.status = status
     session.flush()
     return task
+
+
+def list_task_children(session: Session, parent_task_id: int, limit: int | None = None) -> list[Task]:
+    statement = select(Task).where(Task.parent_task_id == parent_task_id).order_by(Task.sort_order.asc(), Task.id.asc())
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(session.scalars(statement))
+
+
+def list_task_tree(session: Session, root_task_id: int) -> dict[str, object] | None:
+    root = session.get(Task, root_task_id)
+    if root is None:
+        return None
+    children = list_task_children(session, root_task_id, limit=None)
+    return {"task": root, "children": children}
+
+
+def update_task_fields(session: Session, task_id: int, **fields) -> Task | None:
+    task = session.get(Task, task_id)
+    if task is None:
+        return None
+    if "task_kind" in fields and fields["task_kind"] is not None:
+        _validate_task_kind(str(fields["task_kind"]))
+    if "sort_order" in fields and fields["sort_order"] is not None:
+        _validate_sort_order(int(fields["sort_order"]))
+    if "parent_task_id" in fields and fields["parent_task_id"] is not None:
+        parent_task_id = int(fields["parent_task_id"])
+        if parent_task_id == task_id:
+            raise ValueError("A task cannot be parent of itself.")
+        _validate_parent_task(session, parent_task_id)
+    if "depends_on" in fields and fields["depends_on"] is not None:
+        fields["depends_on"] = _serialize_depends_on(fields["depends_on"], current_task_id=task_id)
+    for key, value in fields.items():
+        if hasattr(task, key) and value is not None:
+            setattr(task, key, value)
+    session.flush()
+    return task
+
+
+def reorder_task(session: Session, task_id: int, sort_order: int) -> Task | None:
+    return update_task_fields(session, task_id, sort_order=sort_order)
+
+
+def recompute_parent_status(session: Session, parent_task_id: int) -> Task | None:
+    parent = session.get(Task, parent_task_id)
+    if parent is None:
+        return None
+    children = list_task_children(session, parent_task_id, limit=None)
+    if not children:
+        return parent
+    statuses = [str(child.status or "pending") for child in children]
+    if all(status == "done" for status in statuses):
+        parent.status = "done"
+    elif any(status == "blocked" for status in statuses):
+        parent.status = "blocked"
+    elif any(status == "in_progress" for status in statuses):
+        parent.status = "in_progress"
+    elif all(status == "pending" for status in statuses):
+        parent.status = "pending"
+    else:
+        parent.status = "in_progress"
+    session.flush()
+    return parent
+
+
+def _validate_task_kind(task_kind: str) -> None:
+    if task_kind not in {"task", "plan", "subtask"}:
+        raise ValueError("task_kind must be one of: task, plan, subtask")
+
+
+def _validate_sort_order(sort_order: int) -> None:
+    if not isinstance(sort_order, int):
+        raise ValueError("sort_order must be an integer")
+
+
+def _validate_parent_task(session: Session, parent_task_id: int | None) -> None:
+    if parent_task_id is None:
+        return
+    parent = session.get(Task, int(parent_task_id))
+    if parent is None:
+        raise ValueError(f"parent_task_id does not exist: {parent_task_id}")
+
+
+def _serialize_depends_on(depends_on: list[int] | None, current_task_id: int | None = None) -> str | None:
+    if depends_on is None:
+        return None
+    normalized = [int(item) for item in depends_on]
+    if current_task_id is not None and current_task_id in normalized:
+        raise ValueError("A task cannot depend on itself.")
+    return json.dumps(normalized)
 
 
 def create_task_log(

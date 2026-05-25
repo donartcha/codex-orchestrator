@@ -491,3 +491,7 @@ Markers include:
 - `file_index`
 
 `context_snapshots`, `architectural_decisions`, `command_history` and `lessons_learned` include nullable `task_id` columns so records can be global or task-associated. Existing MariaDB and SQLite databases are updated idempotently by `codex_context.schema_migrations.ensure_task_scope_columns()` when `init_db.py` or a SQL backend opens.
+## Planning workflow
+
+Plans are represented as parent tasks with ordered child subtasks.
+Use `plan create`, `plan add-step` and `plan show` to persist and review execution plans.

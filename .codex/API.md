@@ -24,6 +24,10 @@ with open_context() as context:
     context.remember_lesson("testing", "Problem", "Solution", "Prevention")
     context.remember_lesson("testing", "Task problem", "Task solution", "Prevention", task_id=1)
     task_lessons = context.lessons(category="testing", task_id=1, limit=10)
+    children = context.task_children(parent_task_id=1)
+    tree = context.task_tree(root_task_id=1)
+    context.update_task(task_id=2, title="Updated step", sort_order=2)
+    context.reorder_task(task_id=2, sort_order=3)
 ```
 
 Decisions, commands, lessons and snapshots accept nullable `task_id` values. Omit `task_id` for global memory; pass it when the record belongs to one task execution and should be retrievable with `--task-id`.

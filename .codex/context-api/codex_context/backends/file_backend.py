@@ -55,7 +55,7 @@ class FileBackend:
         raise RuntimeError("Direct SQLAlchemy sessions are unavailable on the file fallback backend.")
         yield  # pragma: no cover
 
-    def remember_task(self, title, description, assigned_agent=None, priority="normal"):
+    def remember_task(self, title, description, assigned_agent=None, priority="normal", parent_task_id=None, task_kind="task", sort_order=0, depends_on=None, acceptance_criteria=None):
         return self._append(
             "tasks",
             {
@@ -64,6 +64,11 @@ class FileBackend:
                 "assigned_agent": assigned_agent,
                 "priority": priority,
                 "status": "pending",
+                "parent_task_id": parent_task_id,
+                "task_kind": task_kind,
+                "sort_order": int(sort_order),
+                "depends_on": json.dumps(list(depends_on or [])) if depends_on is not None else None,
+                "acceptance_criteria": acceptance_criteria,
             },
         )
 
@@ -72,6 +77,51 @@ class FileBackend:
         if status and status != "all":
             rows = [row for row in rows if row.status == status]
         return self._limit(rows, limit)
+    def task_children(self, parent_task_id, limit=None):
+        rows = [row for row in self._objects("tasks") if int(getattr(row, "parent_task_id", 0) or 0) == int(parent_task_id)]
+        rows.sort(key=lambda row: (int(getattr(row, "sort_order", 0) or 0), int(getattr(row, "id", 0) or 0)))
+        return self._limit(rows, limit)
+    def task_tree(self, root_task_id):
+        roots = [row for row in self._objects("tasks") if int(getattr(row, "id", -1)) == int(root_task_id)]
+        if not roots:
+            return None
+        return {"task": roots[0], "children": self.task_children(root_task_id, limit=None)}
+    def update_task(self, task_id, **fields):
+        store = self._read()
+        for row in store["tasks"]:
+            if int(row["id"]) == int(task_id):
+                for key, value in fields.items():
+                    if value is None:
+                        continue
+                    if key == "depends_on":
+                        row[key] = json.dumps(list(value))
+                    else:
+                        row[key] = value
+                row["updated_at"] = self._now()
+                self._write(store)
+                return self._object("tasks", row)
+        return None
+    def reorder_task(self, task_id, sort_order):
+        return self.update_task(task_id, sort_order=int(sort_order))
+    def recompute_parent_status(self, parent_task_id):
+        tree = self.task_tree(parent_task_id)
+        if tree is None:
+            return None
+        children = tree["children"]
+        statuses = [str(getattr(child, "status", "pending") or "pending") for child in children]
+        if not statuses:
+            return tree["task"]
+        if all(status == "done" for status in statuses):
+            status = "done"
+        elif any(status == "blocked" for status in statuses):
+            status = "blocked"
+        elif any(status == "in_progress" for status in statuses):
+            status = "in_progress"
+        elif all(status == "pending" for status in statuses):
+            status = "pending"
+        else:
+            status = "in_progress"
+        return self.update_task(parent_task_id, status=status)
 
     def set_task_status(self, task_id, status):
         store = self._read()
@@ -352,6 +402,13 @@ class FileBackend:
         model = COLLECTIONS[collection]
         if model is dict:
             return dict(row)
+        if collection == "tasks":
+            row = dict(row)
+            row.setdefault("task_kind", "task")
+            row.setdefault("sort_order", 0)
+            row.setdefault("parent_task_id", None)
+            row.setdefault("depends_on", None)
+            row.setdefault("acceptance_criteria", None)
         return model(**row)
 
     def _limit(self, rows, limit):

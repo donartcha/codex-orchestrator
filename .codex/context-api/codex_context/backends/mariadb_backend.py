@@ -14,6 +14,11 @@ from ..repositories import (
     add_lesson,
     add_snapshot,
     add_task,
+    list_task_children,
+    list_task_tree,
+    reorder_task as repo_reorder_task,
+    recompute_parent_status as repo_recompute_parent_status,
+    update_task_fields,
     create_task_log,
     get_orchestration_execution,
     get_orchestration_task,
@@ -57,13 +62,28 @@ class MariaDBBackend:
         with session_scope(self.engine) as session:
             yield session
 
-    def remember_task(self, title, description, assigned_agent=None, priority="normal"):
+    def remember_task(self, title, description, assigned_agent=None, priority="normal", parent_task_id=None, task_kind="task", sort_order=0, depends_on=None, acceptance_criteria=None):
         with self.session() as session:
-            return add_task(session, title, description, assigned_agent, priority)
+            return add_task(session, title, description, assigned_agent, priority, parent_task_id, task_kind, sort_order, depends_on, acceptance_criteria)
 
     def tasks(self, status="pending", limit=None):
         with self.session() as session:
             return list_tasks(session, status, limit)
+    def task_children(self, parent_task_id, limit=None):
+        with self.session() as session:
+            return list_task_children(session, parent_task_id, limit)
+    def task_tree(self, root_task_id):
+        with self.session() as session:
+            return list_task_tree(session, root_task_id)
+    def update_task(self, task_id, **fields):
+        with self.session() as session:
+            return update_task_fields(session, task_id, **fields)
+    def reorder_task(self, task_id, sort_order):
+        with self.session() as session:
+            return repo_reorder_task(session, task_id, sort_order)
+    def recompute_parent_status(self, parent_task_id):
+        with self.session() as session:
+            return repo_recompute_parent_status(session, parent_task_id)
 
     def set_task_status(self, task_id, status):
         with self.session() as session:

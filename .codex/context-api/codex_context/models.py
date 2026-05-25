@@ -76,6 +76,10 @@ class Task(TimestampMixin, Base):
     status: Mapped[str | None] = mapped_column(String(50), server_default="pending", nullable=True)
     priority: Mapped[str | None] = mapped_column(String(50), server_default="normal", nullable=True)
     assigned_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    task_kind: Mapped[str] = mapped_column(String(32), server_default="task", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    depends_on: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
+    acceptance_criteria: Mapped[str | None] = mapped_column(LONG_TEXT_TYPE, nullable=True)
 
 
 class TaskLog(CreatedAtMixin, Base):

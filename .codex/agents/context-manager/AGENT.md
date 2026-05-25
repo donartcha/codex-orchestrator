@@ -88,3 +88,15 @@ Return relevant tasks, decisions, lessons, contradictions, gaps and recommended 
 
 - Summarize recent PowerShell failures before a retry.
 - Propose adding filtered task-log retrieval to `context.py`.
+## Planning flow
+
+When the user asks to plan, decompose or organize work:
+
+1. Create one parent task with `task_kind=plan`.
+2. Store goal, context, scope and constraints in the parent description.
+3. Create ordered child tasks with `task_kind=subtask`.
+4. Add dependencies only when they affect execution order.
+5. Return a formatted checklist/table to the user.
+6. Ask for confirmation only if the plan is destructive, ambiguous or externally risky.
+7. If the user edits the checklist, persist those edits immediately.
+8. Execution agents should use `bootstrap --mode continue-task --task-id <child_id>` for each selected child task.
